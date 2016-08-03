@@ -1,6 +1,12 @@
-box: skoppe/dbuild
+box: skoppe/dbuild:v2.071.1-1
 build:
   steps:
+  - script:
+      name: Stats
+      code: |
+        env
+        dmd --version
+        dub --version
   - script:
       name: Build
       code: |
