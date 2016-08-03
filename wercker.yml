@@ -1,0 +1,24 @@
+box: skoppe/dbuild
+build:
+  steps:
+  - script:
+      name: Build
+      code: |
+        dub build --compiler=dmd --build=release
+        cp dubster $WERCKER_OUTPUT_DIR
+
+deployt-docker-hub:
+  box: skoppe/drun
+  steps:
+  - script:
+      name: Prep container
+      code: |
+        mkdir -p /app/gen && cp $WERCKER_OUTPUT_DIR/dubster /app/dubster
+  - internal/docker-push:
+      username: $DOCKERHUBUSER
+      password: $DOCKERHUBUSER
+      email: $DOCKERHUBEMAIL
+      repository: skoppe/dubster
+      entrypoint: "/app/dubster"
+      volumes: "/app/gen"
+      ports: "8080"
