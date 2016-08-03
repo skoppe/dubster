@@ -13,7 +13,7 @@ build:
         dub build --compiler=dmd --build=release
         cp dubster $WERCKER_OUTPUT_DIR
 
-deployt-docker-hub:
+deploy-docker-hub:
   box: skoppe/drun
   steps:
   - script:
@@ -22,7 +22,7 @@ deployt-docker-hub:
         mkdir -p /app/gen && cp $WERCKER_OUTPUT_DIR/dubster /app/dubster
   - internal/docker-push:
       username: $DOCKERHUBUSER
-      password: $DOCKERHUBUSER
+      password: $DOCKERHUBPASS
       email: $DOCKERHUBEMAIL
       repository: skoppe/dubster
       entrypoint: "/app/dubster"
