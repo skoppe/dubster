@@ -24,6 +24,10 @@ import std.stdio;
 import std.process;
 import std.regex;
 import std.conv : to;
+import std.format : format;
+import std.algorithm : splitter;
+import std.range : front;
+import std.file : exists;
 
          //"CpuPercent": 80,  @1.24
          //"MaximumIOps": 0,  @1.24
@@ -75,6 +79,7 @@ struct DockerRemote
           break;
         default: assert(0,"Unsupported protocol");
       }
+      writeln("Found docker host at %s",host.toString());
     }
   }
   this(string host, string certPath, bool tls)
@@ -203,8 +208,23 @@ auto autodetectDockerRemote()
     }
     version(Posix)
     {
-      // TODO: if `/.dockerinit` exists we are in a container so try to see if /var/run/docker.sock is available else try tcp://GATEWAY:2376
-      host = "unix:///var/run/docker.sock";
+      if (exists("/.dockerinit"))
+      {
+        // we are in a container
+        if (!exists("/var/run/docker.sock"))
+        {
+          // TODO: this is ugly as hell
+          // just try the gateway:2376 and hope it works...
+          auto gateway = executeShell("cat /proc/net/route | head -n2 | tail -n1 | awk '{print $3}'");
+          if (gateway.status == 0)
+          {
+            auto hex = gateway.output.splitter("\n").front;
+            host = format("http://%s.%s.%s.%s",hex[6..8].to!ulong(16),hex[4..6].to!ulong(16),hex[2..4].to!ulong(16),hex[0..2].to!ulong(16));
+          }
+        }
+      }
+      if (host is null)
+        host = "unix:///var/run/docker.sock";
     }
   }
   auto certPath = environment.get("DOCKER_CERT_PATH");

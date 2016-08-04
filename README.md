@@ -1,4 +1,66 @@
 # Dubster
-Runs unittests on dub packages against latest dmd compiler's.
 
-## WIP
+Runs unittests for each dub packages against latest dmd compiler.
+
+## How does it work?
+
+There are two components, a server and at least one worker. The server checks github and code.dlang.org for releases and new packages. Based on that it creates jobs.
+
+Each worker polls the server for a job. Once a job is returned it starts a docker `skoppe/dubster-digger` container to build DMD (if not already cached). It then uses the fresh dmd and starts a docker `skoppe/dubster-dub` container and starts building the package. After the build is complete the raw stdout/stderr is analysed for known error/success patterns, then all is pushed back to the server which will pipe it straight into mongo.
+
+The next steps are
+
+- getting feedback
+- add/remove stuff to this list and prioritize
+- add reporting in the server
+- writing an api
+- a web-app to poke around the dataset
+- fix some of the failing builds due to missing library dependency
+- adding dmd nightly (which was the whole purpose)
+- notifications
+- track memory consumption during build (so we can push heavy builds only to heavy workers)
+- probably a lot more
+
+## Running a Dubster Worker
+
+`docker run -d --name dubsterworker skoppe/dubster --worker --serverHost=https://ghozadab.skoppe.nl`
+
+Note:
+
+Currently only posix with docker is supported. Also it needs a docker host that listens on a tcp port for http requests. `/var/run/docker.sock` is currently not supported. Try to start the docker daemon with `-H tcp://localhost:2376`, the worker will autodetect the docker host.
+
+## Deploy your own Dubster Server
+
+Note: don't just copy and paste these commands in your shell, adjust them according to your needs.
+
+### mongo
+
+`docker create -v /mongodata --name mongodata mongo /bin/bash -c "echo Started mongo data container"`
+
+`docker run --volumes-from mongodata -p 27017 --name mongoserver -d mongo`
+
+### nginx-proxy
+
+Note: adjust `/root/letscerts` to your liking
+
+`docker run -d -p 80:80 -p 443:443 --name nginx-proxy -v /root/letscerts:/etc/nginx/certs:ro -v /etc/nginx/vhost.d -v /usr/share/nginx/html -v /var/run/docker.sock:/tmp/docker.sock:ro jwilder/nginx-proxy`
+
+### letsencrypt-nginx-proxy-companion
+
+`docker run -d -v /root/letscerts:/etc/nginx/certs:rw --volumes-from nginx-proxy -v /var/run/docker.sock:/var/run/docker.sock:ro jrcs/letsencrypt-nginx-proxy-companion`
+
+Upon starting it will first setup keys etc. It might take 5 min before it will correctly route and all that.
+
+### dubster
+
+Note: Use your own host and email :)
+
+`docker run -d --name dubsterserver -e "VIRTUAL_HOST=some.public.host" -e "LETSENCRYPT_HOST=some.public.host" -e "LETSENCRYPT_EMAIL=e@ma.il" --link mongoserver:mongo -e "MONGO_DB_NAME=dubby" skoppe/dubster --server`
+
+## Development
+
+### CI
+
+Wercker CI will build and push a new image to docker hub on each git push. (TODO: isolate docker hub push only to master branch)
+
+If you want to fork and have your own, you need to setup wercker (or other) and adjust the container names appropriately.
