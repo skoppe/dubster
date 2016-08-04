@@ -23,6 +23,7 @@ import dubster.server;
 import dubster.reporter;
 import dubster.analyser;
 import std.stdio : writeln;
+import std.process : environment;
 
 void main()
 {
@@ -36,7 +37,7 @@ void main()
 		if (settings.worker)
 			new Worker(settings.createWorkerSettings);
 		else if (settings.server)
-			new Server(settings.createServerSettings, new Persistence(connectMongoDB(settings.mongoHost)), new Reporter());
+			new Server(settings.createServerSettings, new Persistence(connectMongoDB(settings.mongoHost).getDatabase(settings.mongoDb)), new Reporter());
 	});
 
 	runEventLoop();
@@ -60,7 +61,7 @@ struct Settings
 	bool server = false;
 	bool analyser = false;
 	URL serverHost;
-	string mongoHost, mongoUser, mongoPass;
+	string mongoHost, mongoUser, mongoPass, mongoDb;
 }
 Settings readSettings()
 {
@@ -71,9 +72,12 @@ Settings readSettings()
 			settings.serverHost = URL(host);
 	if (readOption("server",&settings.server,"Starts a server"))
 	{
-		readOption("mongoHost",&settings.mongoHost,"MongoDB address");
+		settings.mongoHost = environment.get("MONGO_PORT_27017_TCP_ADDR", "127.0.0.1");
+		settings.mongoDb = environment.get("MONGO_DB_NAME", "dubster");
+		readOption("mongoHost",&settings.mongoHost,"MongoDB address (default 127.0.0.1)");
 		readOption("mongoUser",&settings.mongoUser,"MongoDB user");
 		readOption("mongoPass",&settings.mongoPass,"MongoDB pass");
+		readOption("mongoDb",&settings.mongoPass,"MongoDB Database name (default dubster)");
 	}
 	return settings;
 }
@@ -91,20 +95,3 @@ bool validate(Settings settings)
 	}
 	return true;
 }
-
-// put mongo only on localhost
-// only allow data reading through application
-// create aggregators that will update stats per package+version / per dmd
-	// how should these stats look?
-	// per package+version we want to know which dmds are supported
-// create simple react viewer with master/detail setup
-	// have two tabs "dmd" / "packages"
-	// show the different items with the error counts
-	// can click on package/dmd name that will show full detail page
-	// can click on error count that will jump to filtered detail page
-	// detail page will have list of build with controls to filter
-// find a way to compare dmd's and get packages that build on one but fail on the other
-// 
-// 
-
-//What is the absolute minimum here??

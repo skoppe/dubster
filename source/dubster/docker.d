@@ -203,6 +203,7 @@ auto autodetectDockerRemote()
     }
     version(Posix)
     {
+      // TODO: if `/.dockerinit` exists we are in a container so try to see if /var/run/docker.sock is available else try tcp://GATEWAY:2376
       host = "unix:///var/run/docker.sock";
     }
   }

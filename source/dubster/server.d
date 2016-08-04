@@ -95,12 +95,12 @@ template hasBsonId(T)
 class Persistence
 {
 	private MongoCollection pendingJobs, dmds, packages, results;
-	this(MongoClient client)
+	this(MongoDatabase db)
 	{
-		pendingJobs = client.getCollection("dubster.pendingJobs");
-		dmds = client.getCollection("dubster.dmds");
-		packages = client.getCollection("dubster.packages");
-		results = client.getCollection("dubster.results");
+		pendingJobs = db["pendingJobs"];
+		dmds = db["dmds"];
+		packages = db["packages"];
+		results = db["results"];
 	}
 	private auto getCollection(alias name)()
 	{
