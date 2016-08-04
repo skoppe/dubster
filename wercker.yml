@@ -25,6 +25,7 @@ deploy-docker-hub:
   - script:
       name: Prep container
       code: |
+        ls -la $WERCKER_SOURCE_DIR
         mkdir -p /app/gen && cp $WERCKER_OUTPUT_DIR/dubster /app/dubster
   - internal/docker-push:
       username: $DOCKERHUBUSER
