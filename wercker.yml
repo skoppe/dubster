@@ -8,13 +8,19 @@ build:
         dmd --version
         dub --version
   - script:
+      name: setup cache
+      code: |
+        mkdir -p $WERCKER_CACHE_DIR/dub
+        mkdir -p ~/.dub
+        ln -s $WERCKER_CACHE_DIR/dub ~/.dub/packages
+  - script:
       name: Build
       code: |
         dub build --compiler=dmd --build=release
         cp dubster $WERCKER_OUTPUT_DIR
 
 deploy-docker-hub:
-  box: skoppe/drun
+  box: skoppe/drun:v1.0.2
   steps:
   - script:
       name: Prep container
