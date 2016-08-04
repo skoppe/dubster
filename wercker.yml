@@ -2,7 +2,7 @@ box: skoppe/dbuild:v2.071.1-1
 build:
   steps:
   - script:
-      name: Stats
+      name: stats
       code: |
         env
         dmd --version
@@ -14,7 +14,7 @@ build:
         mkdir -p ~/.dub
         ln -s $WERCKER_CACHE_DIR/dub ~/.dub/packages
   - script:
-      name: Build
+      name: build
       code: |
         dub build --compiler=dmd --build=release
         cp dubster $WERCKER_OUTPUT_DIR
@@ -23,10 +23,9 @@ deploy-docker-hub:
   box: skoppe/drun:v1.0.2
   steps:
   - script:
-      name: Prep container
+      name: prep container
       code: |
-        ls -la $WERCKER_SOURCE_DIR
-        mkdir -p /app/gen && cp $WERCKER_OUTPUT_DIR/dubster /app/dubster
+        mkdir -p /app/gen && mv $WERCKER_SOURCE_DIR/dubster /app/dubster
   - internal/docker-push:
       username: $DOCKERHUBUSER
       password: $DOCKERHUBPASS
