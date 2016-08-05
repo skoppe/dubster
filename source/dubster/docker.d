@@ -215,6 +215,7 @@ auto autodetectDockerRemote()
         {
           // TODO: this is ugly as hell
           // just try the gateway:2376 and hope it works...
+          // NEED TO FIX THIS SHIT
           auto gateway = executeShell("cat /proc/net/route | head -n2 | tail -n1 | awk '{print $3}'");
           if (gateway.status == 0)
           {

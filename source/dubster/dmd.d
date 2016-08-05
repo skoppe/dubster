@@ -159,30 +159,32 @@ auto importantOnly(Releases)(Releases versions)
 }
 bool alreadyInstalled(string sha)
 {
-	return exists("/Users/skoppe/dev/d/dubster/gen/"~sha);
+	return exists("/gen/"~sha);
 }
 string installCompiler(Meta, Sink)(DockerClient client, Meta meta, ref Sink sink)
 	if (hasMember!(Meta,"sha"))
 {
 	if (alreadyInstalled(meta.sha))
-		return "/Users/skoppe/dev/d/dubster/gen/"~meta.sha;
+		return "/gen/"~meta.sha;
 
 	sink.put("Dubster | Building DMD "~meta.sha~"\n");
 	CreateContainerRequest req;
 	req.image = "skoppe/dubster-digger";
 	req.workingDir = "/digger-2.4-linux-64";
 	req.entrypoint = ["./digger"];
-	req.hostConfig.binds = ["/Users/skoppe/dev/d/dubster/gen/digger:/output"];
+	// TODO: We can also introspect current container and find whatever volume is linked at /gen and use that
+	req.volumes = ["dubsterdata"];
+
 	static if (hasMember!(Meta,"ver"))
 		req.cmd = ["build",meta.ver.toString()];
 	else
 		req.cmd = ["build",meta.sha];
 
 	client.oneOffContainer(req,sink);
-	rename("/Users/skoppe/dev/d/dubster/gen/digger/result","/Users/skoppe/dev/d/dubster/gen/"~meta.sha);
+	rename("/gen/digger/result","/gen/"~meta.sha);
 
 	sink.put("Dubster | Complete build DMD "~req.cmd[$-1]~"\n");
-	return "/Users/skoppe/dev/d/dubster/gen/"~meta.sha;
+	return "/gen/"~meta.sha;
 }
 
 

@@ -21,16 +21,17 @@ set -e
 if [ "$#" -ne 2 ]; then
     echo "Illegal number of arguments"
     echo "Arguments:"
-    echo "  package-name version"
+    echo "  package-name version compiler-path"
     echo ""
-    echo "e.g. unit_threaded 0.6.24"
+    echo "e.g. unit_threaded 0.6.24 /gen/a23ae1f3e"
     exit 1;
 fi
 
 PACKAGE=$1
 VERSION=$2
+COMPILER=$3
 
-ln -s /dub-cache /root/.dub/packages
+ln -s /gen/dub-cache /root/.dub/packages
 dub fetch $PACKAGE --version=$VERSION
 
-dub test --compiler=/compiler/bin/dmd $PACKAGE
+dub test --compiler=$COMPILER $PACKAGE

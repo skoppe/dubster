@@ -24,11 +24,9 @@ RUN apt-get update && \
     chown -R root:root digger-2.4-linux-64 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
-    mkdir -p /output
+    mkdir -p /gen
 
 WORKDIR /digger-2.4-linux-64
-
-VOLUME ["/output"]
 
 ADD digger.ini /digger-2.4-linux-64/digger.ini
 

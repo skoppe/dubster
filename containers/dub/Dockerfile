@@ -19,8 +19,6 @@ MAINTAINER "Sebastiaan Koppe"
 
 RUN pacman -Sy --noconfirm dub gcc libevent && mkdir -p /root/.dub
 
-VOLUME ["/compiler","/dub-cache"]
-
 ADD run.sh /run.sh
 
 ENTRYPOINT ["./run.sh"]

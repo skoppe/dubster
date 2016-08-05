@@ -84,8 +84,9 @@ auto buildPackage(Sink)(DockerClient client, DubPackage pkg, ref Sink sink, stri
 	req.image = "skoppe/dubster-dub";
 	req.workingDir = "/";
 	req.entrypoint = ["./run.sh"];
-	req.hostConfig.binds = [compilerPath~":/compiler","/Users/skoppe/dev/d/dubster/gen/dub-cache:/dub-cache"];
-	req.cmd = [pkg.name,pkg.ver];
+	// TODO: We can also introspect current container and find whatever volume is linked at /gen and use that
+	req.volumes = ["dubsterdata"];
+	req.cmd = [pkg.name,pkg.ver,compilerPath];
 
 	return client.oneOffContainer(req,sink);
 }

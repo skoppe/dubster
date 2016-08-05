@@ -19,15 +19,24 @@ The next steps are
 - adding dmd nightly (which was the whole purpose)
 - notifications
 - track memory consumption during build (so we can push heavy builds only to heavy workers)
+- windows/os-x workers
 - probably a lot more
 
 ## Running a Dubster Worker
 
-`docker run -d --name dubsterworker skoppe/dubster --worker --serverHost=https://ghozadab.skoppe.nl`
+Create a data container (needed since dubster will fire off additional containers and needs a way to share data between them)
+
+`docker create -v /gen --name dubsterdata skoppe/dubster /bin/true`
+
+Then start the container:
+
+`docker run -d --volumes-from dubsterdata --name dubsterworker -e "DOCKER_HOST=http://172.17.0.1:2375" skoppe/dubster --worker --serverHost=https://ghozadab.skoppe.nl`
 
 Note:
 
-Currently only posix with docker is supported. Also it needs a docker host that listens on a tcp port for http requests. `/var/run/docker.sock` is currently not supported. Try to start the docker daemon with `-H tcp://localhost:2376`, the worker will autodetect the docker host.
+The worker needs a docker host that listens on a tcp port for http requests. `/var/run/docker.sock` is currently not supported. Try to start the docker daemon with `-H tcp://172.17.0.1:2375`.
+
+(TODO: This is a bit hackish. Improve)
 
 ## Deploy your own Dubster Server
 
