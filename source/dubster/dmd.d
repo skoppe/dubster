@@ -173,7 +173,7 @@ string installCompiler(Meta, Sink)(DockerClient client, Meta meta, ref Sink sink
 	req.workingDir = "/digger-2.4-linux-64";
 	req.entrypoint = ["./digger"];
 	// TODO: We can also introspect current container and find whatever volume is linked at /gen and use that
-	req.volumes = ["dubsterdata"];
+	req.hostConfig.volumesFrom = ["dubsterdata"];
 
 	static if (hasMember!(Meta,"ver"))
 		req.cmd = ["build",meta.ver.toString()];

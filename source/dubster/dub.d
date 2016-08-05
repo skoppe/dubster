@@ -85,7 +85,7 @@ auto buildPackage(Sink)(DockerClient client, DubPackage pkg, ref Sink sink, stri
 	req.workingDir = "/";
 	req.entrypoint = ["./run.sh"];
 	// TODO: We can also introspect current container and find whatever volume is linked at /gen and use that
-	req.volumes = ["dubsterdata"];
+	req.hostConfig.volumesFrom = ["dubsterdata"];
 	req.cmd = [pkg.name,pkg.ver,compilerPath];
 
 	return client.oneOffContainer(req,sink);
