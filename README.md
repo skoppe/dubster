@@ -28,6 +28,8 @@ Create a data container (needed since dubster will fire off additional container
 
 `docker create -v /gen --name dubsterdata skoppe/dubster /bin/true`
 
+(Note to self: `/gen/dub-cache` must explicitly be created. Find nice solution.)
+
 Then start the container:
 
 `docker run -d --volumes-from dubsterdata --name dubsterworker -e "DOCKER_HOST=http://172.17.0.1:2375" skoppe/dubster --worker --serverHost=https://ghozadab.skoppe.nl`

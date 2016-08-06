@@ -18,7 +18,7 @@
 #
 set -e
 
-if [ "$#" -ne 2 ]; then
+if [ "$#" -ne 3 ]; then
     echo "Illegal number of arguments"
     echo "Arguments:"
     echo "  package-name version compiler-path"
