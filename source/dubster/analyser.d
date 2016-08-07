@@ -35,6 +35,7 @@ enum ErrorType:string
 	UnittestNonZeroExit = "UnittestNonZeroExit",
 	Skipped = "Skipped",
 	DubBuildErrors = "DubBuildErrors",
+	Timeout = "Timeout",
 	Unknown = "Unknown"
 }
 struct ErrorStats

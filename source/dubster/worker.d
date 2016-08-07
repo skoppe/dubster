@@ -78,9 +78,16 @@ class Worker
 		auto sink = Sink();
 		auto compilerPath = settings.client.installCompiler(job.dmd,sink);
 		Timestamp start = getTimestamp();
-		auto state = settings.client.buildPackage(job.pkg,sink,compilerPath);
+		ErrorStats error;
+		try
+		{
+			settings.client.buildPackage(job.pkg,sink,compilerPath);
+			error = sink.appender.data.parseError();
+		} catch (TimeoutException e)
+		{
+			error = ErrorStats(ErrorType.Timeout,1,"");
+		}
 		Timestamp end = getTimestamp();
-		auto error = sink.appender.data.parseError();
 		settings.server.postJobResult(JobResult(job,start,end,sink.appender.data,error));
 		return true;
 	}

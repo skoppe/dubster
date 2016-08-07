@@ -180,7 +180,7 @@ string installCompiler(Meta, Sink)(DockerClient client, Meta meta, ref Sink sink
 	else
 		req.cmd = ["build",meta.sha];
 
-	client.oneOffContainer(req,sink);
+	client.oneOffContainer(req,sink,Duration.max());
 	rename("/gen/digger/result","/gen/"~meta.sha);
 
 	sink.put("Dubster | Complete build DMD "~req.cmd[$-1]~"\n");

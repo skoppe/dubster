@@ -129,6 +129,13 @@ struct DockerRemote
 }
 import std.utf : decodeFront;
 import std.algorithm : min, find, countUntil, filter;
+class TimeoutException : Exception
+{
+  this(string msg)
+  {
+    super(msg);
+  }
+}
 class DockerClient
 {
   private DockerRemote remote;
@@ -140,17 +147,31 @@ class DockerClient
   {
     this(autodetectDockerRemote());
   }
-  void streamLog(Sink)(ContainerId id, ref Sink sink)
+  void streamLog(Sink)(ContainerId id, ref Sink sink, Duration timeout = 5.minutes)
   {
-    remote.get("containers/"~id~"/logs?stdout=1&stderr=1&follow=1",(scope HTTPClientResponse res){
-      if (res.statusCode >= 200 && res.statusCode < 300)
-        res.readRawBody((scope reader){
-          auto input = DockerStream(new ChunkedInputStream(reader));
-          while (!input.empty)
-            sink.put(input.decodeFront);
-        });
-      res.dropBody();
-    }); 
+    Task logStream;
+    auto timer = createTimer(()=>logStream.interrupt());
+    bool interrupted = false;
+
+    logStream = runTask({
+      remote.get("containers/"~id~"/logs?stdout=1&stderr=1&follow=1",(scope HTTPClientResponse res){
+        if (res.statusCode >= 200 && res.statusCode < 300)
+          res.readRawBody((scope reader){
+            auto input = DockerStream(new ChunkedInputStream(reader),timer,timeout);
+            try {
+              while (!input.empty)
+                sink.put(input.decodeFront);
+            } catch (InterruptException e)
+            {
+              interrupted = true;
+            }
+          });
+        res.dropBody();
+      });
+    });
+    logStream.join();
+    if (interrupted)
+      throw new TimeoutException("Timeout while reading log from container");
   }
   ContainerId createContainer(CreateContainerRequest definition)
   {
@@ -187,12 +208,26 @@ class DockerClient
         throw new Exception(res.bodyReader.readAllUTF8);
     });
   }
-  InspectState oneOffContainer(Sink)(CreateContainerRequest definition, ref Sink sink)
+  void stopContainer(ContainerId id)
+  {
+    // note: t is the amount of seconds to wait before docker actively kills the process in the container
+    remote.post("containers/"~id~"/stop?t=5",(scope HTTPClientResponse res){
+      if (res.statusCode == 500)
+        throw new Exception(res.bodyReader.readAllUTF8);
+    });
+  }
+  InspectState oneOffContainer(Sink)(CreateContainerRequest definition, ref Sink sink, Duration streamLogTimeout = 5.minutes)
   {
     auto c = createContainer(definition);
     scope(exit) removeContainer(c);
     startContainer(c);
-    streamLog(c,sink);
+    try {
+      streamLog(c,sink,streamLogTimeout);
+    } catch (TimeoutException e)
+    {
+      stopContainer(c);
+      throw e;
+    }
     auto content = inspectContainer(c);
     return content["State"].deserializeJson!InspectState;
   }
@@ -366,8 +401,10 @@ struct DockerStream
     InputStream input;
     ubyte[128] buffer;
     ubyte[] data;
-    bool done = false;
+    Timer timer;
+    Duration timeout;
     void readHeader() {
+      timer.rearm(timeout);
       input.read(buffer[0..8]);
       frameBytesLeftToRead = buffer[4..8].bigEndianToNative!(uint)();
       state = buffer[0] == '\x01' ? State.StdoutFrame : State.StdinFrame;
@@ -383,9 +420,11 @@ struct DockerStream
       input.read(data);
     }
   }
-  this(ChunkedInputStream input)
+  this(ChunkedInputStream input, Timer timer, Duration timeout)
   {
     this.input = input;
+    this.timer = timer;
+    this.timeout = timeout;
   }
   @property bool empty()
   {
