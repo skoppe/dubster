@@ -26,6 +26,8 @@ import dubster.docker;
 import dubster.reporter;
 import dubster.analyser;
 
+import std.stdio : stdout;
+
 enum State
 {
 	NotAvailable = 1,
@@ -65,30 +67,22 @@ class Worker
 		if (job.isNull)
 			return false;
 
-		struct Sink
-		{
-			Appender!string appender;
-			void put(T)(T t)
-			{
-				import std.stdio;
-				write(t);
-				appender.put(t);
-			}
-		}
-		auto sink = Sink();
-		auto compilerPath = settings.client.installCompiler(job.dmd,sink);
+		Appender!string appender;
+		auto stdoutSink = stdout.lockingTextWriter();
+		auto compilerPath = settings.client.installCompiler(job.dmd,stdoutSink);
 		Timestamp start = getTimestamp();
 		ErrorStats error;
 		try
 		{
-			settings.client.buildPackage(job.pkg,sink,compilerPath);
-			error = sink.appender.data.parseError();
+			settings.client.buildPackage(job.pkg,appender,compilerPath);
+			error = appender.data.parseError();
 		} catch (TimeoutException e)
 		{
+			stdoutSink.put(format("Timeout while building % package",job.pkg.name));
 			error = ErrorStats(ErrorType.Timeout,1,"");
 		}
 		Timestamp end = getTimestamp();
-		settings.server.postJobResult(JobResult(job,start,end,sink.appender.data,error));
+		settings.server.postJobResult(JobResult(job,start,end,appender.data,error));
 		return true;
 	}
 }
