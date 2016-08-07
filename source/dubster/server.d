@@ -40,6 +40,15 @@ interface IDubsterApi
 	Json getJob();
 	@path("/job")
 	void postJobResult(JobResult results);
+	@path("/build/:dmd/:package")
+	void postBuild(string _dmd, string _package);
+	@path("/dmd")
+	DmdVersion[] getDmds();
+}
+struct ServerSettings
+{
+	HTTPServerSettings httpSettings;
+	bool doSync;
 }
 class JobScheduler
 {
@@ -67,25 +76,6 @@ class JobScheduler
 	private void addJobs(Job[] jobs)
 	{
 		this.jobs ~= jobs;
-	}
-}
-class DubsterApi : IDubsterApi
-{
-	private JobScheduler scheduler;
-	this(JobScheduler scheduler)
-	{
-		this.scheduler = scheduler;
-	}
-	Json getJob()
-	{
-		auto job = scheduler.getJob();
-		if (!job.isNull())
-			return job.get().serializeToJson();
-		return Json(null);
-	}
-	void postJobResult(JobResult results)
-	{
-		scheduler.completeJob(results);
 	}
 }
 template hasBsonId(T)
@@ -138,15 +128,16 @@ auto createJobs(DmdVersions,DubPackages)(DmdVersions dmds, DubPackages packages)
 	import std.algorithm : cartesianProduct;
 	return dmds.cartesianProduct(packages).map!((t)=>Job(BsonObjectID.generate(),t[0],t[1]));
 }
-class Server
+class Server : IDubsterApi
 {
 	DmdVersion[] knownDmds;
 	DubPackage[] knownPackages;
 	JobScheduler scheduler;
-	DubsterApi api;
 	Persistence db;
-	this(HTTPServerSettings settings, Persistence db, IReporter reporter)
+	ServerSettings settings;
+	this(ServerSettings s, Persistence db, IReporter reporter)
 	{
+		settings = s;
 		scheduler = new JobScheduler(new class IReporter {
 			override void executing(Job job)
 			{
@@ -159,15 +150,60 @@ class Server
 				reporter.complete(results);
 			}
 		});
-		api = new DubsterApi(scheduler);
 		this.db = db;
 
 		auto router = new URLRouter;
-		router.registerRestInterface(api);
-		listenHTTP(settings, router);
+		router.registerRestInterface(this);
+		listenHTTP(s.httpSettings, router);
 
 		restore();
-		sync();
+		if (s.doSync)
+			sync();
+	}
+	Json getJob()
+	{
+		auto job = scheduler.getJob();
+		if (!job.isNull())
+			return job.get().serializeToJson();
+		return Json(null);
+	}
+	void postJobResult(JobResult results)
+	{
+		scheduler.completeJob(results);
+	}
+	void postBuild(string _dmd, string _package)
+	{
+		if (_dmd == "*")
+		{
+			if (_package == "*")
+				throw new RestException(400,
+					Json([
+						"code":Json(1000),
+						"msg":Json("Be more specific with your build requests, at minimum select a dmd version or a package version.")
+					]));
+			// schedule jobs for specific package with all known dmds
+			throw new RestException(500,Json(["code":Json(2000),"msg":Json("Not implemented")]));
+		}
+		Version dmdVersion = parseVersion(_dmd);
+		auto dmd = knownDmds.find!((a)=>a.ver == dmdVersion);
+		if (dmd.empty)
+			throw new RestException(400,Json(["code":Json(1001),"msg":Json("Unknown dmd version")]));
+		if (_package == "*")
+		{
+			// schedule jobs for specific dmd with all known packages
+			throw new RestException(500,Json(["code":Json(2000),"msg":Json("Not implemented")]));
+		}
+		auto p = _package.split(":");
+		if (p.length != 2)
+			throw new RestException(400,Json(["code":Json(1002),"msg":Json("Invalid package, needs : and a version")]));
+
+		auto pkg = DubPackage(BsonObjectID.generate(),p[0],[1]);
+
+		scheduler.addJobs([Job(BsonObjectID.generate(),dmd.front,pkg)]);
+	}
+	DmdVersion[] getDmds()
+	{
+		return knownDmds;
 	}
 	private void restore()
 	{

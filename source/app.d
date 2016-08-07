@@ -49,17 +49,18 @@ WorkerSettings createWorkerSettings(Settings settings)
 		new DockerClient()
 	);
 }
-HTTPServerSettings createServerSettings(Settings settings)
+ServerSettings createServerSettings(Settings settings)
 {
 	auto sSettings = new HTTPServerSettings();
 	sSettings.port = 8080;
-	return sSettings;
+	return ServerSettings(sSettings,settings.doSync);
 }
 struct Settings
 {
 	bool worker = false;
 	bool server = false;
 	bool analyser = false;
+	bool doSync = true;
 	URL serverHost;
 	string mongoHost, mongoUser, mongoPass, mongoDb;
 }
@@ -78,6 +79,7 @@ Settings readSettings()
 		readOption("mongoUser",&settings.mongoUser,"MongoDB user");
 		readOption("mongoPass",&settings.mongoPass,"MongoDB pass");
 		readOption("mongoDb",&settings.mongoPass,"MongoDB Database name (default dubster)");
+		readOption("sync",&settings.doSync,"Sync known dmd releases from github and packages from code.dlang.org and create build jobs for them (default: true)");
 	}
 	return settings;
 }
