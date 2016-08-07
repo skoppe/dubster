@@ -183,35 +183,41 @@ class Server
 		import std.algorithm : setDifference, setIntersection, sort;
 		import std.range : chain;
 		import std.array : array;
-		auto latestDmds = getDmdTags.toReleases.importantOnly.array.sort!"a > b"().array()[0..1];
-		auto latestPackages = parseCodeDlangOrg.sort();
+		try
+		{
+			auto latestDmds = getDmdTags.toReleases.importantOnly.array.sort!"a > b"().array()[0..1];
+			auto latestPackages = parseCodeDlangOrg.sort();
 
-		auto newDmds = latestDmds.setDifference!"a > b"(knownDmds).array();
-		if (newDmds.length > 0)
-			writeln("Found a new dmd");
-		auto newPackages = latestPackages.setDifference(knownPackages).array();
-		if (newPackages.length > 0)
-			writefln("Found %s new packages",newPackages.length);
-		auto sameDmds = latestDmds.setIntersection!"a > b"(knownDmds);
-		auto samePackages = latestPackages.setIntersection(knownPackages);
+			auto newDmds = latestDmds.setDifference!"a > b"(knownDmds).array();
+			if (newDmds.length > 0)
+				writeln("Found a new dmd");
+			auto newPackages = latestPackages.setDifference(knownPackages).array();
+			if (newPackages.length > 0)
+				writefln("Found %s new packages",newPackages.length);
+			auto sameDmds = latestDmds.setIntersection!"a > b"(knownDmds);
+			auto samePackages = latestPackages.setIntersection(knownPackages);
 
-		auto jobs = chain(
-			createJobs(knownDmds, newPackages),
-			createJobs(newDmds, knownPackages),
-			createJobs(newDmds, newPackages)
-		).array();
+			auto jobs = chain(
+				createJobs(knownDmds, newPackages),
+				createJobs(newDmds, knownPackages),
+				createJobs(newDmds, newPackages)
+			).array();
 
-		if (jobs.length > 0)
-			writefln("Created %s new jobs",jobs.length);
+			if (jobs.length > 0)
+				writefln("Created %s new jobs",jobs.length);
 
-		knownDmds = chain(newDmds,sameDmds).array.sort().array();
-		knownPackages = chain(newPackages,samePackages).array.sort().array();
-		if (jobs.length > 0)
-			db.append!"pendingJobs"(jobs);
-		db.replace!"dmds"(knownDmds);
-		db.replace!"packages"(knownPackages);
+			knownDmds = chain(newDmds,sameDmds).array.sort().array();
+			knownPackages = chain(newPackages,samePackages).array.sort().array();
+			if (jobs.length > 0)
+				db.append!"pendingJobs"(jobs);
+			db.replace!"dmds"(knownDmds);
+			db.replace!"packages"(knownPackages);
 
-		scheduler.addJobs(jobs);
+			scheduler.addJobs(jobs);
+		} catch (Exception e)
+		{
+			writefln("Error in sync(): %s",e.msg);
+		}
 		setTimer(5.minutes, &this.sync, false);
 	}
 }
