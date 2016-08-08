@@ -164,6 +164,7 @@ class DockerClient
             } catch (InterruptException e)
             {
               interrupted = true;
+              res.disconnect();
             }
           });
         res.dropBody();
