@@ -31,7 +31,17 @@ PACKAGE=$1
 VERSION=$2
 COMPILER=$3
 
-ln -s /gen/dub-cache /root/.dub/packages
+# ln -s /gen/dub-cache /root/.dub/packages
 dub fetch $PACKAGE --version=$VERSION
 
-dub test --compiler=$COMPILER $PACKAGE
+_term() {
+	echo "Caught SIGTERM signal!"
+	kill -TERM "$child" 2>/dev/null
+}
+trap _term SIGTERM
+
+dub test --compiler=$COMPILER $PACKAGE &
+
+child=$!
+echo "$child"
+wait "$child"
