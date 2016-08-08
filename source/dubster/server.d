@@ -221,7 +221,7 @@ class Server : IDubsterApi
 		import std.array : array;
 		try
 		{
-			auto latestDmds = getDmdTags.toReleases.importantOnly.array.sort!"a > b"().array()[0..1];
+			auto latestDmds = getDmdTags.toReleases.importantOnly.array.sort!"a > b"().array();
 			auto latestPackages = parseCodeDlangOrg.sort();
 
 			auto newDmds = latestDmds.setDifference!"a > b"(knownDmds).array();
