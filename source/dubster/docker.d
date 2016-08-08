@@ -200,6 +200,7 @@ class DockerClient
     remote.post("containers/"~id~"/start",(scope HTTPClientResponse res){
       if (res.statusCode != 204)
         throw new Exception(res.bodyReader.readAllUTF8);
+      res.dropBody();
     });
   }
   void removeContainer(ContainerId id)
@@ -207,6 +208,7 @@ class DockerClient
     remote.drop("containers/"~id,(scope HTTPClientResponse res){
       if (res.statusCode != 204)
         throw new Exception(res.bodyReader.readAllUTF8);
+      res.dropBody();
     });
   }
   void stopContainer(ContainerId id)
