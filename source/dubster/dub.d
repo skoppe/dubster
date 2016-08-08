@@ -77,13 +77,14 @@ auto parseCodeDlangOrg()
 	);
 	return packages;
 }
-auto buildPackage(Sink)(DockerClient client, DubPackage pkg, ref Sink sink, string compilerPath)
+auto buildPackage(Sink)(DockerClient client, DubPackage pkg, ref Sink sink, string compilerPath, long memoryLimit)
 {
 	sink.put("Dubster | Building package "~pkg.name~" "~pkg.ver~"\n");
 	CreateContainerRequest req;
 	req.image = "skoppe/dubster-dub";
 	req.workingDir = "/";
 	req.entrypoint = ["./run.sh"];
+	req.hostConfig.memory = memoryLimit;
 	// TODO: We can also introspect current container and find whatever volume is linked at /gen and use that
 	req.hostConfig.volumesFrom = ["dubsterdata"];
 	req.cmd = [pkg.name,pkg.ver,compilerPath~"/bin/dmd"];

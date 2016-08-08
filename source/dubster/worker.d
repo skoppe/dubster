@@ -38,6 +38,7 @@ struct WorkerSettings
 {
 	RestInterfaceClient!IDubsterApi server;
 	DockerClient client;
+	long memoryLimit;
 }
 Nullable!Job parseJob(Json job)
 {
@@ -74,7 +75,7 @@ class Worker
 		ErrorStats error;
 		try
 		{
-			settings.client.buildPackage(job.pkg,appender,compilerPath);
+			settings.client.buildPackage(job.pkg,appender,compilerPath,settings.memoryLimit);
 			error = appender.data.parseError();
 		} catch (TimeoutException e)
 		{

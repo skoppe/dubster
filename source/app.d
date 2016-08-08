@@ -46,7 +46,8 @@ WorkerSettings createWorkerSettings(Settings settings)
 {
 	return WorkerSettings(
 		new RestInterfaceClient!IDubsterApi(settings.serverHost),
-		new DockerClient()
+		new DockerClient(),
+		settings.memoryLimit
 	);
 }
 ServerSettings createServerSettings(Settings settings)
@@ -62,6 +63,7 @@ struct Settings
 	bool analyser = false;
 	bool doSync = true;
 	URL serverHost;
+	long memoryLimit;
 	string mongoHost, mongoUser, mongoPass, mongoDb;
 }
 Settings readSettings()
@@ -69,8 +71,13 @@ Settings readSettings()
 	Settings settings;
 	string host;
 	if (readOption("worker",&settings.worker,"Starts a worker"))
+	{
 		if (readOption("serverHost",&host,"Public address of server"))
 			settings.serverHost = URL(host);
+		readOption("memory",&settings.memoryLimit,"Memory limit of container");
+		if (settings.memoryLimit < 1024*1024*1024)
+			throw new Exception("Too little memory for container, must be over 1Gb.");
+	}
 	if (readOption("server",&settings.server,"Starts a server"))
 	{
 		settings.mongoHost = environment.get("MONGO_PORT_27017_TCP_ADDR", "127.0.0.1");

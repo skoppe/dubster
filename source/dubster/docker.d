@@ -310,10 +310,10 @@ struct HostConfig
 {
   @name("Binds") string[] binds;
   @name("Links") string[] links;
-  @name("Memory") int memory = 0;
-  @name("MemorySwap") int memorySwap = 0;
-  @name("MemoryReservation") int memoryReservation = 0;
-  @name("KernelMemory") int kernelMemory = 0;
+  @name("Memory") long memory = 0;
+  @name("MemorySwap") long memorySwap = 0;
+  @name("MemoryReservation") long memoryReservation = 0;
+  @name("KernelMemory") long kernelMemory = 0;
   @name("CpuShares") int cpuShares = 0;
   @name("CpuPeriod") int cpuPeriod = 0;
   @name("CpuQuota") int cpuQuota = 0;
