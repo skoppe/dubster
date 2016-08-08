@@ -254,7 +254,7 @@ class Server : IDubsterApi
 		{
 			writefln("Error in sync(): %s",e.msg);
 		}
-		setTimer(1.minutes, &this.sync, false);
+		setTimer(5.minutes, &this.sync, false);
 	}
 }
 
