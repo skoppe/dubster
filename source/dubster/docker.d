@@ -217,6 +217,15 @@ class DockerClient
     remote.post("containers/"~id~"/stop?t=5",(scope HTTPClientResponse res){
       if (res.statusCode == 500)
         throw new Exception(res.bodyReader.readAllUTF8);
+      res.dropBody();
+    });
+  }
+  void killContainer(ContainerId id)
+  {
+    remote.post("containers/"~id~"/kill",(scope HTTPClientResponse res){
+      if (res.statusCode == 500)
+        throw new Exception(res.bodyReader.readAllUTF8);
+      res.dropBody();
     });
   }
   InspectState oneOffContainer(Sink)(CreateContainerRequest definition, ref Sink sink, Duration streamLogTimeout = 5.minutes)
@@ -228,7 +237,7 @@ class DockerClient
       streamLog(c,sink,streamLogTimeout);
     } catch (TimeoutException e)
     {
-      stopContainer(c);
+      killContainer(c);
       throw e;
     }
     auto content = inspectContainer(c);
