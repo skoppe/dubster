@@ -170,6 +170,7 @@ class DockerClient
       });
     });
     logStream.join();
+    timer.stop();
     if (interrupted)
       throw new TimeoutException("Timeout while reading log from container");
   }
