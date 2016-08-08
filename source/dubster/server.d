@@ -216,22 +216,22 @@ class Server : IDubsterApi
 	}
 	private void sync()
 	{
-		import std.algorithm : setDifference, setIntersection, sort;
+		import std.algorithm : setDifference, setIntersection, sort, uniq;
 		import std.range : chain;
 		import std.array : array;
 		try
 		{
-			auto latestDmds = getDmdTags.toReleases.importantOnly.array.sort!"a > b"().array();
+			auto latestDmds = getDmdTags.toReleases.importantOnly.array.sort().array();
 			auto latestPackages = parseCodeDlangOrg.sort();
 
-			auto newDmds = latestDmds.setDifference!"a > b"(knownDmds).array();
+			auto newDmds = latestDmds.setDifference(knownDmds).array();
 			if (newDmds.length > 0)
-				writeln("Found a new dmd");
+				writefln("Found %s new dmds", newDmds.length);
 			auto newPackages = latestPackages.setDifference(knownPackages).array();
 			if (newPackages.length > 0)
 				writefln("Found %s new packages",newPackages.length);
-			auto sameDmds = latestDmds.setIntersection!"a > b"(knownDmds);
-			auto samePackages = latestPackages.setIntersection(knownPackages);
+			auto sameDmds = latestDmds.setIntersection(knownDmds).array();
+			auto samePackages = latestPackages.setIntersection(knownPackages).array();
 
 			auto jobs = chain(
 				createJobs(knownDmds, newPackages),
@@ -254,7 +254,7 @@ class Server : IDubsterApi
 		{
 			writefln("Error in sync(): %s",e.msg);
 		}
-		setTimer(5.minutes, &this.sync, false);
+		setTimer(1.minutes, &this.sync, false);
 	}
 }
 
