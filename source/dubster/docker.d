@@ -150,7 +150,9 @@ class DockerClient
   void streamLog(Sink)(ContainerId id, ref Sink sink, Duration timeout = 5.minutes)
   {
     Task logStream;
-    auto timer = createTimer(()=>logStream.interrupt());
+    Nullable!Timer timer;
+    if (timeout != Duration.max)
+      timer = createTimer(()=>logStream.interrupt());
     bool interrupted = false;
 
     logStream = runTask({
@@ -171,7 +173,8 @@ class DockerClient
       });
     });
     logStream.join();
-    timer.stop();
+    if (!timer.isNull)
+      timer.stop();
     if (interrupted)
       throw new TimeoutException("Timeout while reading log from container");
   }
@@ -414,10 +417,11 @@ struct DockerStream
     InputStream input;
     ubyte[128] buffer;
     ubyte[] data;
-    Timer timer;
+    Nullable!Timer timer;
     Duration timeout;
     void readHeader() {
-      timer.rearm(timeout);
+      if (!timer.isNull)
+        timer.rearm(timeout);
       input.read(buffer[0..8]);
       frameBytesLeftToRead = buffer[4..8].bigEndianToNative!(uint)();
       state = buffer[0] == '\x01' ? State.StdoutFrame : State.StdinFrame;
@@ -433,7 +437,7 @@ struct DockerStream
       input.read(data);
     }
   }
-  this(ChunkedInputStream input, Timer timer, Duration timeout)
+  this(ChunkedInputStream input, Nullable!Timer timer, Duration timeout)
   {
     this.input = input;
     this.timer = timer;
