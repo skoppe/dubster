@@ -24,7 +24,9 @@ The next steps are
 
 ## Running a Dubster Worker
 
-Create a data container (needed since dubster will fire off additional containers and needs a way to share data between them)
+First of all, do a `docker pull skoppe/dubster-dub` and `docker pull skoppe/dubster-digger` .
+
+Create a data container. Dubster will fire off additional containers and needs a way to share data between them.
 
 `docker create -v /gen --name dubsterdata skoppe/dubster /bin/true`
 
@@ -52,9 +54,11 @@ Note: don't just copy and paste these commands in your shell, adjust them accord
 
 ### nginx-proxy
 
+Place a file `default` with `client_max_body_size 20m;` as content somewhere (e.g. `/root/nginx.conf/default`)
+
 Note: adjust `/root/letscerts` to your liking
 
-`docker run -d -p 80:80 -p 443:443 --name nginx-proxy -v /root/letscerts:/etc/nginx/certs:ro -v /etc/nginx/vhost.d -v /usr/share/nginx/html -v /var/run/docker.sock:/tmp/docker.sock:ro jwilder/nginx-proxy`
+`docker run -d -p 80:80 -p 443:443 --name nginx-proxy -v /root/letscerts:/etc/nginx/certs:ro -v /usr/share/nginx/html -v /var/run/docker.sock:/tmp/docker.sock:ro -v /root/nginx.conf:/etc/nginx/vhost.d jwilder/nginx-proxy`
 
 ### letsencrypt-nginx-proxy-companion
 
