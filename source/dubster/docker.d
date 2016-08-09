@@ -229,7 +229,7 @@ class DockerClient
       res.dropBody();
     });
   }
-  InspectState oneOffContainer(Sink)(CreateContainerRequest definition, ref Sink sink, Duration streamLogTimeout = 5.minutes)
+  InspectState oneOffContainer(Sink)(CreateContainerRequest definition, ref Sink sink, Duration streamLogTimeout = 2.minutes)
   {
     auto c = createContainer(definition);
     scope(exit) removeContainer(c);

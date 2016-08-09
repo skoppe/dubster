@@ -79,7 +79,7 @@ class Worker
 			error = appender.data.parseError();
 		} catch (TimeoutException e)
 		{
-			stdoutSink.put(format("Timeout while building % package",job.pkg.name));
+			stdoutSink.put(format("Timeout while building %s package",job.pkg.name));
 			error = ErrorStats(ErrorType.Timeout,1,"");
 		}
 		Timestamp end = getTimestamp();
