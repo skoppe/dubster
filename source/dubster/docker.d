@@ -42,7 +42,7 @@ struct DockerHost
   ushort port;
   string toString()
   {
-    if (port != ushort.init)
+    if (port != ushort.init && protocol != "unix")
       return protocol ~ "://" ~ host ~ ":" ~ port.to!string;
     return protocol ~ "://" ~ host;
   }
@@ -63,7 +63,9 @@ struct DockerRemote
       import std.stdio;
       switch (matches[1])
       {
-        case "unix": assert(0,"unix socket is not supported");
+        case "unix":
+          host = DockerHost("unix",matches[2],ushort.init);
+          break;
         case "http": 
         case "https":
         case "tcp":
@@ -259,25 +261,9 @@ auto autodetectDockerRemote()
     }
     version(Posix)
     {
-      if (exists("/.dockerinit"))
-      {
-        // we are in a container
-        if (!exists("/var/run/docker.sock"))
-        {
-          // TODO: this is ugly as hell
-          // just try the gateway:2376 and hope it works...
-          // NEED TO FIX THIS SHIT
-          auto gateway = executeShell("cat /proc/net/route | head -n2 | tail -n1 | awk '{print $3}'");
-          if (gateway.status == 0)
-          {
-            auto hex = gateway.output.splitter("\n").front;
-            host = format("http://%s.%s.%s.%s",hex[6..8].to!ulong(16),hex[4..6].to!ulong(16),hex[2..4].to!ulong(16),hex[0..2].to!ulong(16));
-          }
-        }
-      }
-      if (host is null)
-        host = "unix:///var/run/docker.sock";
+      host = "unix:///var/run/docker.sock";
     }
+    assert(host !is null,"Cannot detect docker, please set DOCKER_HOST environment variable");
   }
   auto certPath = environment.get("DOCKER_CERT_PATH");
   auto tlsVerify = environment.get("DOCKER_TLS_VERIFY");
