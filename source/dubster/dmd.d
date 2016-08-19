@@ -18,13 +18,14 @@
 module dubster.dmd;
 
 import std.regex;
-import std.conv : to;
-import vibe.d;
-import std.algorithm : filter;
+import std.conv : to, text;
+import std.algorithm : filter, cmp;
 import std.range : isInputRange, ElementType, enumerate;
-import dubster.docker;
 import std.file : rename, exists;
 import std.traits : hasMember;
+import vibe.d;
+import dubster.docker;
+import std.digest.sha;
 
 struct GitCommit
 {
@@ -38,15 +39,78 @@ struct GitTag
 	string tarball_url;
 	GitCommit commit;
 }
+auto isValidDmdVersion(string ver)
+{
+	auto versionReg = ctRegex!`^v([0-9]+)\.([0-9]+)\.([0-9]+)(?:-(.+)([0-9]+))?$`;
+	return ver.matchFirst(versionReg);
+}
+auto isValidDiggerVersion(string ver)
+{
+	auto basePullOrBranch = ctRegex!`^\w+ \+ ((\w+#[1-9][0-9]*)|(([A-Za-z-0-9]+\/){2}[A-Za-z-0-9]+))$`;
+	return ver.matchFirst(basePullOrBranch) || ver.isValidDmdVersion;
+}
+auto isValidDiggerVersion(DmdVersion ver) { return ver.ver.isValidDiggerVersion(); }
+
 struct DmdVersion
 {
-	@name("_id") BsonObjectID id;
-	Version ver;
-	string sha;
+	@name("_id") string id;
+	string ver;
+	this(string v, string i = null)
+	{
+		ver = v;
+		if (i is null)
+		{
+			if (v.isValidDmdVersion)
+				id = v;
+			else
+				id = sha1Of(v).toHexString().text;
+		} else
+			id = i;
+	}
 	auto opCmp(const DmdVersion other)
 	{
-		return ver.opCmp(other.ver);
+		return id.cmp(other.id);
 	}
+}
+@("isValidDiggerVersion")
+unittest
+{
+	assert(DmdVersion("v2.061.1-b2").isValidDiggerVersion);
+	assert(DmdVersion("master + dmd#123").isValidDiggerVersion);
+	assert(DmdVersion("master + phobos#123").isValidDiggerVersion);
+	assert(DmdVersion("master + druntime#123").isValidDiggerVersion);
+	assert(DmdVersion("master + Username/dmd/awesome-feature").isValidDiggerVersion);
+	assert(!DmdVersion("master+ druntime#123").isValidDiggerVersion);
+	assert(!DmdVersion("master+druntime#123").isValidDiggerVersion);
+}
+@("DmdVersion")
+unittest
+{
+	assert(DmdVersion("v2.061.1-b2").id == "v2.061.1-b2");
+	assert(DmdVersion("master + Username/dmd/awesome-feature").id == "DC09B6E93C54499D72AA197B02FB62B7C4D9561F");
+	assert(DmdVersion("master + phobos#123").id == "327ADF40998E1B333184B885DCBAD1952166F7A6");
+}
+auto getDmdTags()
+{
+	GitTag[] tags;
+	int statusCode;
+	// we could also request ?page=2. look into the Link header
+	requestHTTP("https://api.github.com/repos/dlang/dmd/tags",(scope req){
+		req.method = HTTPMethod.GET;
+	},(scope res){
+
+		scope (exit) res.dropBody();
+		statusCode = res.statusCode;
+		if (statusCode != 200)
+			throw new Exception("Invalid response");
+		tags = res.readJson.deserializeJson!(GitTag[]);
+	});
+	return tags;
+}
+auto toReleases(Tags)(Tags tags)
+	if (isInputRange!Tags && is(ElementType!(Tags) == GitTag))
+{
+	return tags.map!(c=>DmdVersion(c.name));
 }
 struct Version
 {
@@ -116,6 +180,7 @@ Version parseVersion(string v)
 			throw new Exception("Invalid version "~v);
 	}
 }
+@("Version")
 unittest
 {
 	assert(parseVersion("v2.071.1-b2") == Version(2,71,1,"b",2));
@@ -130,61 +195,70 @@ unittest
 	assert(parseVersion("v2.071.1-rc3") < parseVersion("v2.071.2"));
 	assert(parseVersion("v2.071.1-b2") < parseVersion("v2.071.2"));
 }
-auto getDmdTags()
-{
-	GitTag[] tags;
-	int statusCode;
-	// we could also request ?page=2. look into the Link header
-	requestHTTP("https://api.github.com/repos/dlang/dmd/tags",(scope req){
-		req.method = HTTPMethod.GET;
-	},(scope res){
-
-		scope (exit) res.dropBody();
-		statusCode = res.statusCode;
-		if (statusCode != 200)
-			throw new Exception("Invalid response");
-		tags = res.readJson.deserializeJson!(GitTag[]);
-	});
-	return tags;
-}
-auto toReleases(Tags)(Tags tags)
-	if (isInputRange!Tags && is(ElementType!(Tags) == GitTag))
-{
-	return tags.map!(c=>DmdVersion(BsonObjectID.generate,c.name.parseVersion,c.commit.sha));
-}
-auto importantOnly(Releases)(Releases versions)
+/** drops patches, release-candidates and beta's whenever they are followed by a newer patch */
+auto importantOnly(Releases)(Releases releases)
 	if (isInputRange!Releases && is(ElementType!(Releases) == DmdVersion))
 {
-	return versions.enumerate().filter!(i=>i.value.ver.postfix.length == 0 || i.index == 0).map!(i=>i.value);
+	// todo: can probably be done easier with sliding window and a filter
+	import std.algorithm : sort, chunkBy, map, joiner, find, uniq;
+	import std.range : tail, front, take, chain, drop, retro;
+	import std.array : array;
+
+	auto versions = releases.map!(v=>parseVersion(v.ver)).array().sort();
+	auto grouped = versions.chunkBy!((a,b){
+		return a.major == b.major && a.minor == b.minor;
+	}).array();
+	auto head = grouped.take(grouped.length-1);
+	auto last = grouped.tail(1);
+
+	auto preLast = last.map!((g){
+		return chain(
+			g.array().retro.find!(a=>a.postfix.length == 0).take(1),
+			g.tail(1)
+		).uniq;
+	}).joiner;
+
+	return chain(
+		head.map!(g=>g.tail(1).front),
+		preLast
+	).map!(v=>DmdVersion(v.toString));
+}
+@("importantOnly")
+unittest
+{
+	import std.algorithm : equal;
+	assert([DmdVersion("v2.061.1-b2")].importantOnly.equal([DmdVersion("v2.061.1-b2")]));
+	assert([DmdVersion("v2.060.1-b1"),DmdVersion("v2.060.1-b2")].importantOnly.equal([DmdVersion("v2.060.1-b2")]));
+	assert([DmdVersion("v2.060.1-rc1"),DmdVersion("v2.060.1-rc2")].importantOnly.equal([DmdVersion("v2.060.1-rc2")]));
+	assert([DmdVersion("v2.061.1"),DmdVersion("v2.061.2")].importantOnly.equal([DmdVersion("v2.061.2")]));
+	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2"),DmdVersion("v2.061.1-b1"),DmdVersion("v2.061.1-rc1"),DmdVersion("v2.061.1"),DmdVersion("v2.061.2")].importantOnly.equal([DmdVersion("v2.060.2"),DmdVersion("v2.061.2")]));
+	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-rc1")].importantOnly.equal([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-rc1")]));
+	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-b1")].importantOnly.equal([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-b1")]));
+	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-b1"),DmdVersion("v2.060.2-rc1")].importantOnly.equal([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-rc1")]));
 }
 bool alreadyInstalled(string sha)
 {
 	return exists("/gen/"~sha);
 }
-string installCompiler(Meta, Sink)(DockerClient client, Meta meta, ref Sink sink)
-	if (hasMember!(Meta,"sha"))
+string installCompiler(Sink)(DockerClient client, DmdVersion dmd, ref Sink sink)
 {
-	if (alreadyInstalled(meta.sha))
-		return "/gen/"~meta.sha;
+	if (alreadyInstalled(dmd.id))
+		return "/gen/"~dmd.id;
 
-	sink.put("Dubster | Building DMD "~meta.sha~"\n");
+	sink.put("Dubster | Building DMD "~dmd.ver~"\n");
 	CreateContainerRequest req;
 	req.image = "skoppe/dubster-digger";
 	req.workingDir = "/digger-2.4-linux-64";
 	req.entrypoint = ["./digger"];
 	// TODO: We can also introspect current container and find whatever volume is linked at /gen and use that
 	req.hostConfig.volumesFrom = ["dubsterdata"];
-
-	static if (hasMember!(Meta,"ver"))
-		req.cmd = ["build",meta.ver.toString()];
-	else
-		req.cmd = ["build",meta.sha];
+	req.cmd = ["build",dmd.ver];
 
 	client.oneOffContainer(req,sink,Duration.max());
-	rename("/gen/digger/result","/gen/"~meta.sha);
+	rename("/gen/digger/result","/gen/"~dmd.id);
 
 	sink.put("Dubster | Complete build DMD "~req.cmd[$-1]~"\n");
-	return "/gen/"~meta.sha;
+	return "/gen/"~dmd.id;
 }
 
 

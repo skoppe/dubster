@@ -24,24 +24,25 @@ import dubster.dub;
 import dubster.reporter;
 import dubster.analyser;
 
-import std.stdio;
+import std.stdio : writeln, writefln;
+import std.algorithm : setDifference, setIntersection, sort, uniq;
+import std.range : chain;
+import std.array : array;
+import std.traits : hasMember;
 
-struct JobResult
+struct JobRequest
 {
-	Job job;
-	Timestamp start;
-	Timestamp finish;
-	string output;
-	ErrorStats error;
+	string dmd;
+	string pkg;
 }
 interface IDubsterApi
 {
-	// TODO: need to set no-cache
+	@path("/job")
 	Json getJob();
 	@path("/job")
+	void postJob(JobRequest job);
+	@path("/results")
 	void postJobResult(JobResult results);
-	@path("/build/:dmd/:package")
-	void postBuild(string _dmd, string _package);
 	@path("/dmd")
 	DmdVersion[] getDmds();
 }
@@ -50,47 +51,21 @@ struct ServerSettings
 	HTTPServerSettings httpSettings;
 	bool doSync;
 }
-class JobScheduler
-{
-	private Job[] jobs;
-	private IReporter reporter;
-	this(IReporter r)
-	{
-		reporter = r;
-	}
-	Nullable!Job getJob()
-	{
-		auto n = Nullable!(Job)();
-		if (jobs.length > 0)
-		{
-			n = jobs[0];
-			jobs = jobs[1..$];
-			reporter.executing(n.get);
-		}
-		return n;
-	}
-	void completeJob(JobResult results)
-	{
-		reporter.complete(results);
-	}
-	private void addJobs(Job[] jobs)
-	{
-		this.jobs ~= jobs;
-	}
-}
 template hasBsonId(T)
 {
 	enum hasBsonId = true; // TODO: check if T has a member that is a BsonObjectID and is named _id or has an @name("_id") attribute
 }
 class Persistence
 {
-	private MongoCollection pendingJobs, dmds, packages, results;
+	private MongoCollection pendingJobs, executingJobs, dmds, packages, results, jobSets;
 	this(MongoDatabase db)
 	{
 		pendingJobs = db["pendingJobs"];
+		executingJobs = db["executingJobs"];
 		dmds = db["dmds"];
 		packages = db["packages"];
 		results = db["results"];
+		jobSets = db["jobSets"];
 	}
 	private auto getCollection(alias name)()
 	{
@@ -122,11 +97,10 @@ class Persistence
 		static assert(hasBsonId!T);
 		getCollection!(name).remove(t);
 	}
-}
-auto createJobs(DmdVersions,DubPackages)(DmdVersions dmds, DubPackages packages)
-{
-	import std.algorithm : cartesianProduct;
-	return dmds.cartesianProduct(packages).map!((t)=>Job(BsonObjectID.generate(),t[0],t[1]));
+	void update(alias name, Selector, Updates)(Selector s, Updates u)
+	{
+		getCollection!(name).update(s,u);
+	}
 }
 class Server : IDubsterApi
 {
@@ -138,18 +112,7 @@ class Server : IDubsterApi
 	this(ServerSettings s, Persistence db, IReporter reporter)
 	{
 		settings = s;
-		scheduler = new JobScheduler(new class IReporter {
-			override void executing(Job job)
-			{
-				reporter.executing(job);
-			}
-			override void complete(JobResult results)
-			{
-				db.append!("results")([results]);
-				db.remove!("pendingJobs")(results.job);
-				reporter.complete(results);
-			}
-		});
+		scheduler = new JobScheduler();
 		this.db = db;
 
 		auto router = new URLRouter;
@@ -162,44 +125,82 @@ class Server : IDubsterApi
 	}
 	Json getJob()
 	{
-		auto job = scheduler.getJob();
-		if (!job.isNull())
-			return job.get().serializeToJson();
-		return Json(null);
+		auto js = scheduler.getHighPrioJobSet();
+		if (js.isNull)
+			return Json(null);
+
+		auto job = scheduler.getJob(j=>(j.jobSet == js.id));
+		if (job.isNull())
+			return Json(null);
+
+		db.append!("executingJobs")([job.get]);
+		db.remove!("pendingJobs")(job.get);
+		if (js.started == Timestamp.init)
+		{
+			js.started = getTimestamp();
+			scheduler.updateJobSet(js);
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["started":Bson(js.started)]]);
+		}
+		return job.get().serializeToJson();
 	}
 	void postJobResult(JobResult results)
 	{
-		scheduler.completeJob(results);
+		db.append!("results")([results]);
+		db.remove!("executingJobs")(results.job);
+		auto js = scheduler.getJobSet(results.job.jobSet);
+		js.pendingJobs -= 1;
+		js.completedJobs += 1;
+		if (js.pendingJobs == 0)
+		{
+			js.finished = getTimestamp();
+			scheduler.removeJobSet(js.id);
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["pendingJobs":Bson(js.pendingJobs),"completedJobs":Bson(js.completedJobs),"finished":Bson(js.finished)]]);
+		} else
+		{
+			scheduler.updateJobSet(js);
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["pendingJobs":Bson(js.pendingJobs),"completedJobs":Bson(js.completedJobs)]]);
+		}
 	}
-	void postBuild(string _dmd, string _package)
+	void postJob(JobRequest job)
 	{
-		if (_dmd == "*")
+		auto js = JobSet(JobTrigger.Manual, "dmd: "~job.dmd~", pkg: "~job.pkg);
+		// todo: see if jobset already exists, if it does, continue
+		if (job.dmd == "*")
 		{
-			if (_package == "*")
-				throw new RestException(400,
-					Json([
-						"code":Json(1000),
-						"msg":Json("Be more specific with your build requests, at minimum select a dmd version or a package version.")
-					]));
-			// schedule jobs for specific package with all known dmds
-			throw new RestException(500,Json(["code":Json(2000),"msg":Json("Not implemented")]));
-		}
-		Version dmdVersion = parseVersion(_dmd);
-		auto dmd = knownDmds.find!((a)=>a.ver == dmdVersion);
-		if (dmd.empty)
-			throw new RestException(400,Json(["code":Json(1001),"msg":Json("Unknown dmd version")]));
-		if (_package == "*")
+			// run pkg against all dmds
+			if (job.pkg == "*")
+				throw new RestException(400, Json(["code":Json(1000),"msg":Json("Cannot wildcard both dmd and pkg")]));
+			
+			auto pkgs = knownPackages.filter!(p => p.name == job.pkg || p._id == job.pkg).array();
+			if (pkgs.length == 0)
+				throw new RestException(400, Json(["code":Json(1001),"msg":Json("Could not find any package for "~job.pkg)]));
+
+			// todo: see if jobset already exists, if it does, continue
+			auto jobs = createJobs(knownDmds,pkgs,js).array();
+			if (jobs.length == 0)
+				throw new RestException(400, Json(["code":Json(1002),"msg":Json("Skipped: resulted in zero jobs.")]));
+			addJobs(jobs,js);
+		} else
 		{
-			// schedule jobs for specific dmd with all known packages
-			throw new RestException(500,Json(["code":Json(2000),"msg":Json("Not implemented")]));
+			if (!job.dmd.isValidDiggerVersion())
+				throw new RestException(400, Json(["code":Json(1003),"msg":Json("Invalid dmd version")]));
+			auto dmd = DmdVersion(job.dmd);
+			DubPackage[] pkgs;
+			if (job.pkg == "*")
+			{
+				pkgs = knownPackages;
+			} else
+			{
+				pkgs = knownPackages.filter!(p => p.name == job.pkg || p._id == job.pkg).array();
+			}
+			if (pkgs.length == 0)
+				throw new RestException(400, Json(["code":Json(1001),"msg":Json("Could not find any package for "~job.pkg)]));
+			// run dmd against all packages
+			auto jobs = createJobs([dmd],pkgs,js).array();
+			if (jobs.length == 0)
+				throw new RestException(400, Json(["code":Json(1002),"msg":Json("Skipped: resulted in zero jobs.")]));
+			addJobs(jobs,js);
 		}
-		auto p = _package.split(":");
-		if (p.length != 2)
-			throw new RestException(400,Json(["code":Json(1002),"msg":Json("Invalid package, needs : and a version")]));
-
-		auto pkg = DubPackage(BsonObjectID.generate(),p[0],[1]);
-
-		scheduler.addJobs([Job(BsonObjectID.generate(),dmd.front,pkg)]);
 	}
 	DmdVersion[] getDmds()
 	{
@@ -207,49 +208,102 @@ class Server : IDubsterApi
 	}
 	private void restore()
 	{
-		auto previous = db.readAll!("pendingJobs",Job).array();
-		if (previous.length > 0)
-			writefln("Found %s previous jobs: ",previous.length);
-		scheduler.addJobs(previous);
+		auto previousJobs = db.readAll!("pendingJobs",Job).array();
+		auto previousJobSets = db.readAll!("jobSets",JobSet).array();
+		if (previousJobs.length > 0)
+			writefln("Got %s previous jobs",previousJobs.length);
+		if (previousJobSets.length > 0)
+			writefln("Got %s previous job sets",previousJobSets.length);
+		scheduler.restore(previousJobs,previousJobSets);
 		knownDmds = db.readAll!("dmds",DmdVersion).array();
 		knownPackages = db.readAll!("packages",DubPackage).array();
 	}
+	private void processDmdReleases(DmdVersions)(DmdVersions latest)
+		if (is(ElementType!DmdVersions == DmdVersion))
+	{
+		auto newDmds = latest.setDifference(knownDmds).array();
+		if (newDmds.length > 0)
+			writefln("Got %s new dmds", newDmds.length);
+		auto sameDmds = latest.setIntersection(knownDmds).array();
+
+		foreach(dmd; newDmds)
+		{
+			auto js = JobSet(JobTrigger.DmdRelease, dmd.ver);
+			// todo: see if jobset already exists, if it does, continue
+			auto jobs = createJobs([dmd],knownPackages,js).array();
+			if (jobs.length == 0)
+				continue;
+			addJobs(jobs,js);
+		}
+		knownDmds = chain(newDmds,sameDmds).array.sort().array();
+		db.replace!"dmds"(knownDmds);
+	}
+	private void processDubPackages(DubPackages)(DubPackages latest)
+		if (is(ElementType!DubPackages == DubPackage))
+	{
+		auto newPackages = latest.setDifference(knownPackages).array();
+		if (newPackages.length > 0)
+			writefln("Got %s new packages", newPackages.length);
+		auto samePackages = latest.setIntersection(knownPackages).array();
+
+		foreach(pkg; newPackages)
+		{
+			auto js = JobSet(JobTrigger.PackageUpdate,pkg.name~":"~pkg.ver);
+			// todo: see if jobset already exists, if it does, continue
+			auto jobs = createJobs(knownDmds,[pkg],js).array();
+			if (jobs.length == 0)
+				continue;
+			addJobs(jobs,js);
+		}
+		knownPackages = chain(newPackages,samePackages).array.sort().array();
+		db.replace!"packages"(knownPackages);
+	}
+	private DmdVersion createDmdVersion(JobSet js)
+	{
+		string pull;
+		final switch(js.trigger)
+		{
+			case JobTrigger.DmdRelease:
+			case JobTrigger.PackageUpdate:
+			case JobTrigger.Manual:
+			case JobTrigger.Nightly:
+				assert(false,"Can only create dmd version for pull requests");
+			case JobTrigger.DmdPullRequest: pull = "dmd"; break;
+			case JobTrigger.DruntimePullRequest: pull = "druntime"; break;
+			case JobTrigger.PhobosPullRequest: pull = "phobos"; break;
+		}
+		string ver = "master + "~pull~"#"~js.triggerId;
+		assert(ver.isValidDiggerVersion());
+		return DmdVersion(ver);
+	}
+	private void processPullRequest(JobTrigger trigger, uint seq)
+	{
+		assert(trigger == JobTrigger.DmdPullRequest || trigger == JobTrigger.DruntimePullRequest || trigger == JobTrigger.PhobosPullRequest);
+		auto js = JobSet(trigger, seq.to!string);
+		writefln("Got %s",js);
+		auto dmd = createDmdVersion(js);
+		auto jobs = createJobs([dmd],knownPackages,js).array();
+		if (jobs.length == 0)
+			return;
+		addJobs(jobs,js);
+	}
+	private void addJobs(Job[] jobs, JobSet js)
+	{
+		js.pendingJobs = jobs.length;
+		db.append!"pendingJobs"(jobs);
+		db.append!"jobSets"([js]);
+		scheduler.addJobs(jobs,js);
+		writefln("Created %s new jobs triggered by %s",jobs.length,js);
+	}
 	private void sync()
 	{
-		import std.algorithm : setDifference, setIntersection, sort, uniq;
-		import std.range : chain;
-		import std.array : array;
 		try
 		{
 			auto latestDmds = getDmdTags.toReleases.importantOnly.array.sort().array();
 			auto latestPackages = parseCodeDlangOrg.sort();
 
-			auto newDmds = latestDmds.setDifference(knownDmds).array();
-			if (newDmds.length > 0)
-				writefln("Found %s new dmds", newDmds.length);
-			auto newPackages = latestPackages.setDifference(knownPackages).array();
-			if (newPackages.length > 0)
-				writefln("Found %s new packages",newPackages.length);
-			auto sameDmds = latestDmds.setIntersection(knownDmds).array();
-			auto samePackages = latestPackages.setIntersection(knownPackages).array();
-
-			auto jobs = chain(
-				createJobs(knownDmds, newPackages),
-				createJobs(newDmds, knownPackages),
-				createJobs(newDmds, newPackages)
-			).array();
-
-			if (jobs.length > 0)
-				writefln("Created %s new jobs",jobs.length);
-
-			knownDmds = chain(newDmds,sameDmds).array.sort().array();
-			knownPackages = chain(newPackages,samePackages).array.sort().array();
-			if (jobs.length > 0)
-				db.append!"pendingJobs"(jobs);
-			db.replace!"dmds"(knownDmds);
-			db.replace!"packages"(knownPackages);
-
-			scheduler.addJobs(jobs);
+			processDmdReleases(latestDmds);
+			processDubPackages(latestPackages);
 		} catch (Exception e)
 		{
 			writefln("Error in sync(): %s",e.msg);
@@ -257,6 +311,3 @@ class Server : IDubsterApi
 		setTimer(5.minutes, &this.sync, false);
 	}
 }
-
-
-

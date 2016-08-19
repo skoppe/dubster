@@ -20,23 +20,23 @@ module dubster.dub;
 import vibe.core.core : runTask;
 import vibe.http.client : requestHTTP;
 import vibe.stream.operations : readAllUTF8;
-import vibe.data.bson : BsonObjectID;
 import vibe.data.serialization : name;
 import std.range : zip;
 import std.array : array;
 import std.algorithm : map, filter;
-import arsd.dom;
-
 import dubster.docker;
 
-version (unittest) {
-	import unit_threaded;
-}
 struct DubPackage
 {
-	BsonObjectID _id;
+	string _id;
 	string name;
 	string ver;
+	this(string n, string v)
+	{
+		name = n;
+		ver = v;
+		_id = name~":"~ver;
+	}
 	int opCmp(ref const DubPackage other)
 	{
 		import std.algorithm : cmp;
@@ -53,12 +53,12 @@ auto getDiff(DubPackage[] pa, DubPackage[] pb)
 }
 unittest
 {
-	import std.stdio;
+	import std.algorithm : equal;
 	DubPackage[] empty;
 	DubPackage abc100 = DubPackage("abc","1.0.0"), abc009 = DubPackage("abc","0.0.9");
-	getDiff([abc100],[abc100]).shouldEqual(empty);
-	getDiff([abc100],[abc009]).shouldEqual([abc100]);
-	getDiff([abc100,abc009],[abc100,abc100]).shouldEqual([abc009]);
+	assert(getDiff([abc100],[abc100]).equal(empty));
+	assert(getDiff([abc100],[abc009]).equal([abc100]));
+	assert(getDiff([abc100,abc009],[abc100,abc100]).equal([abc009]));
 }
 auto parseCodeDlangOrg()
 {
@@ -68,11 +68,12 @@ auto parseCodeDlangOrg()
 
 		},
 		(scope res){
+			import arsd.dom;
 			auto doc = new Document(res.bodyReader.readAllUTF8());
 			auto rows = doc.querySelectorAll("#content > table tr");//.map!(d=>d.innerHTML);
 			auto names = rows.map!(p=>p.querySelector("tr td a")).filter!(p=>p !is null).map!(p=>p.innerHTML);
 			auto versions = rows.map!(p=>p.querySelector("tr td:nth-child(2)")).filter!(p=>p !is null).map!(p=>p.firstInnerText()[1..$]);
-			packages = names.zip(versions).map!(z=>DubPackage(BsonObjectID.generate,z[0],z[1])).array();
+			packages = names.zip(versions).map!(z=>DubPackage(z[0],z[1])).array();
 		}
 	);
 	return packages;
@@ -88,7 +89,5 @@ auto buildPackage(Sink)(DockerClient client, DubPackage pkg, ref Sink sink, stri
 	// TODO: We can also introspect current container and find whatever volume is linked at /gen and use that
 	req.hostConfig.volumesFrom = ["dubsterdata"];
 	req.cmd = [pkg.name,pkg.ver,compilerPath~"/bin/dmd"];
-
 	return client.oneOffContainer(req,sink);
 }
-

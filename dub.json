@@ -4,9 +4,13 @@
 	"copyright": "Copyright © 2016, skoppe",
 	"authors": ["skoppe"],
 	"dependencies": {
-		"vibe-d": "~>0.7.29",
-		"unit-threaded": "~>0.6.24"
+		"vibe-d": "~>0.7.29"
 	},
-	"targetType": "executable",
-	"versions": ["VibeCustomMain"]
+    "configurations": [
+        {
+        	"name":"application",
+        	"targetType": "executable",
+        	"versions": ["VibeCustomMain"]
+        }
+    ]
 }
