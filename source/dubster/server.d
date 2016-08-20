@@ -200,13 +200,21 @@ class Server : IDubsterApi
 		if (job.isNull())
 			return Json(null);
 
-		db.append!("executingJobs")([job.get]);
+		Json j = job.get.serializeToJson();
+		j["started"] = getTimestamp();
+		db.append!("executingJobs")([j]);
 		db.remove!("pendingJobs")(job.get);
+		js.pendingJobs -= 1;
+		js.executingJobs += 1;
 		if (js.started == Timestamp.init)
 		{
 			js.started = getTimestamp();
 			scheduler.updateJobSet(js);
-			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["started":Bson(js.started)]]);
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["pendingJobs":Bson(js.pendingJobs),"executingJobs":Bson(js.executingJobs),"started":Bson(js.started)]]);
+		} else
+		{
+			scheduler.updateJobSet(js);
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["pendingJobs":Bson(js.pendingJobs),"executingJobs":Bson(js.executingJobs)]]);
 		}
 		return job.get().serializeToJson();
 	}
@@ -215,17 +223,17 @@ class Server : IDubsterApi
 		db.append!("results")([results]);
 		db.remove!("executingJobs")(results.job);
 		auto js = scheduler.getJobSet(results.job.jobSet);
-		js.pendingJobs -= 1;
+		js.executingJobs -= 1;
 		js.completedJobs += 1;
 		if (js.pendingJobs == 0)
 		{
 			js.finished = getTimestamp();
 			scheduler.removeJobSet(js.id);
-			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["pendingJobs":Bson(js.pendingJobs),"completedJobs":Bson(js.completedJobs),"finished":Bson(js.finished)]]);
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["executingJobs":Bson(js.executingJobs),"completedJobs":Bson(js.completedJobs),"finished":Bson(js.finished)]]);
 		} else
 		{
 			scheduler.updateJobSet(js);
-			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["pendingJobs":Bson(js.pendingJobs),"completedJobs":Bson(js.completedJobs)]]);
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["executingJobs":Bson(js.executingJobs),"completedJobs":Bson(js.completedJobs)]]);
 		}
 	}
 	void postJob(JobRequest job)

@@ -18,6 +18,7 @@
 module dubster.job;
 
 import std.algorithm : countUntil, remove, sort;
+import std.range : retro;
 import std.datetime : Clock;
 import std.typecons : Nullable;
 import dubster.dub;
@@ -63,6 +64,7 @@ struct JobSet
 	Timestamp started;
 	Timestamp finished;
 	long pendingJobs;
+	long executingJobs;
 	long completedJobs;
 	this(JobTrigger t, string tId, int p = 0)
 	{
@@ -133,9 +135,10 @@ class JobScheduler
 	}
 	Nullable!JobSet getHighPrioJobSet()
 	{
-		if (sets.length == 0)
+		auto idx = sets.retro.countUntil!(s=>s.pendingJobs != 0);
+		if (idx == -1)
 			return Nullable!(JobSet)();
-		return Nullable!(JobSet)(sets[$-1]);
+		return Nullable!(JobSet)(sets[idx]);
 	}
 	void updateJobSet(JobSet js)
 	{
@@ -183,13 +186,17 @@ unittest
 	auto dmds = [DmdVersion("v2.071.1")];
 	auto packages = [DubPackage("abc","0.1.1")];
 	auto jobs = createJobs(dmds,packages,js).array();
+	js.pendingJobs = jobs.length;
 	s.addJobs(jobs,js);
 	assert(!s.getHighPrioJobSet().isNull);
 	assert(s.getHighPrioJobSet() == js);
-	js.pendingJobs = 42;
+	js.pendingJobs = 0;
+	s.updateJobSet(js);
+	assert(s.getHighPrioJobSet().isNull);
+	js.pendingJobs = 1;
 	s.updateJobSet(js);
 	assert(!s.getHighPrioJobSet().isNull);
-	assert(s.getHighPrioJobSet.pendingJobs == 42);
+	assert(s.getHighPrioJobSet.pendingJobs == 1);
 	s.removeJobSet(js.id);
 	assert(s.getHighPrioJobSet().isNull);
 }
