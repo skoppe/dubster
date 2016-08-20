@@ -55,7 +55,41 @@ template hasBsonId(T)
 {
 	enum hasBsonId = true; // TODO: check if T has a member that is a BsonObjectID and is named _id or has an @name("_id") attribute
 }
-class Persistence
+struct PersistenceMessage
+{
+	string collection;
+	string type;
+	Json data;
+}
+class PersistenceDispatcher
+{
+	private Task[] subscribers;
+	void subscribe(Task t)
+	{
+		subscribers ~= t;
+	}
+	void unsubscribe(Task t)
+	{
+		auto idx = subscribers.countUntil!(i=>i==t);
+		if (idx == -1)
+			return;
+		subscribers.remove(idx);
+		subscribers = subscribers[0..$-1];
+	}
+	private void dispatch(PersistenceMessage msg)
+	{
+		Task[] failedSends;
+		foreach (s; subscribers)
+			try s.send(msg); catch(Exception e) { failedSends ~= s; }
+		foreach (t; failedSends)
+			unsubscribe(t);
+	}
+	private void dispatch(string name, T)(string type, T t)
+	{
+		dispatch(PersistenceMessage(name,type,t.serializeToJson()));
+	}
+}
+class Persistence : PersistenceDispatcher
 {
 	private MongoCollection pendingJobs, executingJobs, dmds, packages, results, jobSets;
 	this(MongoDatabase db)
@@ -67,7 +101,7 @@ class Persistence
 		results = db["results"];
 		jobSets = db["jobSets"];
 	}
-	private auto getCollection(alias name)()
+	private auto getCollection(string name)()
 	{
 		static assert(
 			hasMember!(Persistence,name) &&
@@ -75,31 +109,40 @@ class Persistence
 			"collection "~name~" doesn't exist");
 		return __traits(getMember, this, name);
 	}
-	void append(alias name, T)(T[] t)
+	void append(string name, T)(T t)
 	{
 		static assert(hasBsonId!T);
 		getCollection!(name).insert(t);
+		dispatch!(name)("append",t);
 	}
-	void replace(alias name, T)(T[] t)
+	void replace(string name, T)(T t)
 	{
 		static assert(hasBsonId!T);
 		auto collection = getCollection!name;
 		try collection.drop(); catch(Exception e) {}
 		collection.insert(t);
+		dispatch!(name)("replace",t);
 	}
-	auto readAll(alias name, T)()
+	auto readAll(string name, T)()
 	{
 		static assert(hasBsonId!T);
 		return getCollection!(name).find!T();
 	}
-	void remove(alias name, T)(T t)
+	void remove(string name, T)(T t)
 	{
 		static assert(hasBsonId!T);
 		getCollection!(name).remove(t);
+		dispatch!(name)("remove",t);
 	}
-	void update(alias name, Selector, Updates)(Selector s, Updates u)
+	void update(string name, Selector, Updates)(Selector s, Updates u)
 	{
 		getCollection!(name).update(s,u);
+		struct Update
+		{
+			Selector selector;
+			Updates updates;
+		}
+		dispatch!(name)("update",Update(s,u));
 	}
 }
 class Server : IDubsterApi
@@ -116,12 +159,36 @@ class Server : IDubsterApi
 		this.db = db;
 
 		auto router = new URLRouter;
+		router.get("/events", handleWebSockets(&handleWebSocketConnection));
+		router.get("/public/*", serveStaticFiles("."));
 		router.registerRestInterface(this);
 		listenHTTP(s.httpSettings, router);
 
 		restore();
 		if (s.doSync)
 			sync();
+	}
+	void handleWebSocketConnection(scope WebSocket socket)
+	{
+		int counter = 0;
+		logInfo("Got new web socket connection.");
+		auto task = Task.getThis();
+		db.subscribe(task);
+		try
+		{
+			while (true) {
+				receiveTimeout(1.seconds,
+					(PersistenceMessage message){
+						socket.send(message.serializeToJson().toString());
+					});
+				if (!socket.connected) break;
+			}
+			logInfo("Client disconnected.");
+		} catch (Exception e)
+		{
+			logInfo("Exception: %s",e.msg);
+		}
+		db.unsubscribe(task);
 	}
 	Json getJob()
 	{

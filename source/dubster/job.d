@@ -139,7 +139,7 @@ class JobScheduler
 	}
 	void updateJobSet(JobSet js)
 	{
-		auto idx = jobs.countUntil!(a=>a.id==js.id);
+		auto idx = sets.countUntil!(a=>a.id==js.id);
 		if (idx == -1)
 			return;
 		bool reSort = sets[idx].priority != js.priority;
@@ -174,6 +174,24 @@ class JobScheduler
 		this.sets ~= js;
 		sort(this.sets);
 	}
+}
+@("JobScheduler")
+unittest
+{
+	auto s = new JobScheduler();
+	auto js = JobSet(JobTrigger.DmdRelease,"v2.071.1");
+	auto dmds = [DmdVersion("v2.071.1")];
+	auto packages = [DubPackage("abc","0.1.1")];
+	auto jobs = createJobs(dmds,packages,js).array();
+	s.addJobs(jobs,js);
+	assert(!s.getHighPrioJobSet().isNull);
+	assert(s.getHighPrioJobSet() == js);
+	js.pendingJobs = 42;
+	s.updateJobSet(js);
+	assert(!s.getHighPrioJobSet().isNull);
+	assert(s.getHighPrioJobSet.pendingJobs == 42);
+	s.removeJobSet(js.id);
+	assert(s.getHighPrioJobSet().isNull);
 }
 auto createJobs(DmdVersions,DubPackages)(DmdVersions dmds, DubPackages packages, JobSet js)
 {
