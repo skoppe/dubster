@@ -40,7 +40,7 @@ Note:
 
 The worker needs a docker host that listens on a tcp port for http requests. `/var/run/docker.sock` is currently not supported. Try to start the docker daemon with `-H tcp://172.17.0.1:2375`.
 
-(TODO: This is a bit hackish. Improve)
+(TODO: This is really hackish. Improve)
 
 ## Deploy your own Dubster Server
 
