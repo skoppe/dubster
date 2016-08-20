@@ -18,6 +18,7 @@ build:
       code: |
         dub build --compiler=dmd --build=release
         cp dubster $WERCKER_OUTPUT_DIR
+        cp -rf public $WERCKER_OUTPUT_DIR/public
 
 deploy-docker-hub:
   box: skoppe/drun:v1.0.2
@@ -25,7 +26,7 @@ deploy-docker-hub:
   - script:
       name: prep container
       code: |
-        mkdir -p /app/gen && mv $WERCKER_SOURCE_DIR/dubster /app/dubster
+        mkdir -p /app/gen && mv $WERCKER_SOURCE_DIR/dubster /app/dubster && mv $WERCKER_SOURCE_DIR/public /app/dubster/public
   - internal/docker-push:
       username: $DOCKERHUBUSER
       password: $DOCKERHUBPASS
