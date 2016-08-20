@@ -17,7 +17,7 @@
 FROM greyltc/archlinux
 MAINTAINER "Sebastiaan Koppe"
 
-RUN pacman -Sy --noconfirm dub gcc libevent && mkdir -p /root/.dub
+RUN pacman -Sy --noconfirm dub gcc libevent blas fcgi ftgl gsl jack lapack lapacke leveldb miniupnpc nanomsg netcdf scrypt snappy tarsnap tcc tk wayland zlib xorg && mkdir -p /root/.dub
 
 ADD run.sh /run.sh
 
