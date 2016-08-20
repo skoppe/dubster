@@ -26,7 +26,7 @@ deploy-docker-hub:
   - script:
       name: prep container
       code: |
-        mkdir -p /app/gen && mv $WERCKER_SOURCE_DIR/dubster /app/dubster && mv $WERCKER_SOURCE_DIR/public /app/dubster/public
+        mkdir -p /app/gen && mv $WERCKER_SOURCE_DIR/dubster /app/dubster && mv $WERCKER_SOURCE_DIR/public /app/public
   - internal/docker-push:
       username: $DOCKERHUBUSER
       password: $DOCKERHUBPASS
