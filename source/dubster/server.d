@@ -43,6 +43,8 @@ interface IDubsterApi
 	void postJob(JobRequest job);
 	@path("/results")
 	void postJobResult(JobResult results);
+	@path("/pull/:component/:number")
+	void postPullRequest(string _component, string _number);
 	@path("/dmd")
 	DmdVersion[] getDmds();
 }
@@ -276,6 +278,26 @@ class Server : IDubsterApi
 				throw new RestException(400, Json(["code":Json(1002),"msg":Json("Skipped: resulted in zero jobs.")]));
 			addJobs(jobs,js);
 		}
+	}
+	void postPullRequest(string _component, string _number)
+	{
+		JobTrigger trigger;
+		switch(_component)
+		{
+			case "dmd": trigger = JobTrigger.DmdPullRequest; break;
+			case "druntime": trigger = JobTrigger.DruntimePullRequest; break;
+			case "phobos": trigger = JobTrigger.PhobosPullRequest; break;
+			default:
+				throw new RestException(400, Json(["code":Json(1004),"msg":Json("Invalid component, must be one of [dmd,phobos,druntime].")]));
+		}
+		uint number;
+		try {
+			number = _number.to!uint;
+		} catch (Exception e)
+		{
+			throw new RestException(400, Json(["code":Json(1005),"msg":Json("Last path segment must be a positive integer.")]));
+		}
+		processPullRequest(trigger,number);
 	}
 	DmdVersion[] getDmds()
 	{
