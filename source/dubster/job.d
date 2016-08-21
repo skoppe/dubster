@@ -18,7 +18,7 @@
 module dubster.job;
 
 import std.algorithm : countUntil, remove, sort;
-import std.range : retro;
+import std.range : retro, empty, front, popFront;
 import std.datetime : Clock;
 import std.typecons : Nullable;
 import dubster.dub;
@@ -28,6 +28,7 @@ import dubster.analyser;
 import vibe.data.serialization : name;
 import std.conv : to, text;
 import std.digest.sha;
+import std.array : appender;
 
 struct Job
 {
@@ -207,4 +208,81 @@ auto createJobs(DmdVersions,DubPackages)(DmdVersions dmds, DubPackages packages,
 		auto sha = sha1Of(t[0].id ~ t[1]._id).toHexString().text;
 		return Job(sha,t[0],t[1],js.id);
 	});
+}
+struct JobSummary
+{
+	@name("_id") string id;
+	DmdVersion dmd;
+	DubPackage pkg;
+}
+struct JobResultSummary
+{
+	JobSummary job;
+	Timestamp start;
+	Timestamp finish;
+	ErrorStats error;
+}
+struct JobComparison
+{
+	JobResultSummary to;
+	JobResultSummary from;	
+}
+JobComparison[] compareJobResultSets(JobResultSummary[] setA, JobResultSummary[] setB)
+{
+	auto compareJobResultSummary(JobResultSummary a, JobResultSummary b)
+	{
+		return cmp(a.job.pkg._id,b.job.pkg._id);
+	}
+
+	sort!((a,b)=>compareJobResultSummary(a,b)<0)(setA);
+	sort!((a,b)=>compareJobResultSummary(a,b)<0)(setB);
+
+	auto compsApp = appender!(JobComparison[]);
+	while(!setA.empty && !setB.empty)
+	{
+		auto left = setA.front();
+		auto right = setB.front();
+		auto c = compareJobResultSummary(left,right);
+		if (c == 0)
+		{
+			if (left.error.type != right.error.type ||
+				left.error.exitCode != right.error.exitCode)
+				compsApp.put(JobComparison(left,right));
+			setA.popFront();
+			setB.popFront();
+		} else if (c < 0)
+			setA.popFront();
+		else
+			setB.popFront();
+	}
+	return compsApp.data;
+}
+@("compareJobResultSets")
+unittest
+{
+	auto dmd = DmdVersion("v2.061.1");
+	auto pkgs = [DubPackage("abc","1.0.0"),DubPackage("def","1.0.0")];
+	auto jobSummaries = pkgs.map!(p=>JobSummary("",dmd,p)).array();
+	auto noError = ErrorStats(ErrorType.None);
+	auto linkerError = ErrorStats(ErrorType.LinkerError);
+	auto dmdError1 = ErrorStats(ErrorType.DmdNonZeroExit,1);
+	auto dmdError99 = ErrorStats(ErrorType.DmdNonZeroExit,99);
+
+	auto sum0noError = JobResultSummary(jobSummaries[0],getTimestamp,getTimestamp,noError);
+	auto sum1noError = JobResultSummary(jobSummaries[1],getTimestamp,getTimestamp,noError);
+	auto sum0linkerError = JobResultSummary(jobSummaries[0],getTimestamp,getTimestamp,linkerError);
+	auto sum0dmd1Error = JobResultSummary(jobSummaries[0],getTimestamp,getTimestamp,dmdError1);
+	auto sum0dmd99Error = JobResultSummary(jobSummaries[0],getTimestamp,getTimestamp,dmdError99);
+
+	import std.algorithm : equal;
+	assert(compareJobResultSets([sum0noError],[sum0noError]).empty);
+	assert(compareJobResultSets([sum0noError,sum1noError],[sum1noError]).empty);
+	assert(compareJobResultSets([sum0noError,sum1noError],[sum1noError,sum0linkerError]).equal(
+		[JobComparison(sum0noError,sum0linkerError)])
+	);
+	assert(compareJobResultSets([sum0linkerError,sum1noError],[sum1noError,sum0linkerError]).empty);
+
+	assert(compareJobResultSets([sum0dmd1Error],[sum0dmd99Error]).equal(
+		[JobComparison(sum0dmd1Error,sum0dmd99Error)])
+	);
 }

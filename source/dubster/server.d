@@ -25,7 +25,7 @@ import dubster.reporter;
 import dubster.analyser;
 
 import std.stdio : writeln, writefln;
-import std.algorithm : setDifference, setIntersection, sort, uniq;
+import std.algorithm : setDifference, setIntersection, sort, uniq, cmp, copy;
 import std.range : chain;
 import std.array : array;
 import std.traits : hasMember;
@@ -34,6 +34,17 @@ struct JobRequest
 {
 	string dmd;
 	string pkg;
+}
+struct JobSetQueryParams
+{
+	@optional string query;
+	@optional int skip;
+	@optional int limit;
+	@optional JobTrigger[] types;
+}
+struct JobSetComparison
+{
+	JobComparison[] items;
 }
 interface IDubsterApi
 {
@@ -47,6 +58,12 @@ interface IDubsterApi
 	void postPullRequest(string _component, string _number);
 	@path("/dmd")
 	DmdVersion[] getDmds();
+	@path("/jobset")
+	JobSet[] findJobSet(JobSetQueryParams query);
+	@path("/jobset/:id")
+	JobSet getJobSet(string _id);
+	@path("/jobset/:from/compare/:to")
+	JobSetComparison getComparison(string _from, string _to);
 }
 struct ServerSettings
 {
@@ -145,6 +162,10 @@ class Persistence : PersistenceDispatcher
 			Updates updates;
 		}
 		dispatch!(name)("update",Update(s,u));
+	}
+	auto find(string name, T, Query)(Query q, int skip = 0, int limit = 0)
+	{
+		return getCollection!(name).find!(T,Query)(q,null,QueryFlags.None,skip,limit);
 	}
 }
 class Server : IDubsterApi
@@ -302,6 +323,30 @@ class Server : IDubsterApi
 	DmdVersion[] getDmds()
 	{
 		return knownDmds;
+	}
+	JobSet[] findJobSet(JobSetQueryParams query)
+	{
+		throw new RestException(400, Json(["code":Json(1006),"msg":Json("Not Implemented.")]));
+	}
+	JobSet getJobSet(string _id)
+	{
+		auto cursor = db.find!("jobSets",JobSet)(["_id": BsonObjectID.fromString(_id)]);
+		if (cursor.empty)
+			throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found.")]));
+		return cursor.front();
+	}
+	JobSetComparison getComparison(string _to, string _from)
+	{
+		auto readData(string id)
+		{
+			auto cursor = db.find!("results",JobResultSummary)(["job": ["jobSet": id]]);
+			auto app = appender!(JobResultSummary[]);
+			cursor.copy(app);
+			return app.data;
+		}
+		auto toSet = readData(_to);
+		auto fromSet = readData(_from);
+		return JobSetComparison(compareJobResultSets(toSet,fromSet));
 	}
 	private void restore()
 	{
