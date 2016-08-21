@@ -399,8 +399,8 @@ class Server : IDubsterApi
 			auto latestDmds = getDmdTags.toReleases.importantOnly.array.sort().array();
 			auto latestPackages = parseCodeDlangOrg.sort();
 
-			processDmdReleases(latestDmds);
 			processDubPackages(latestPackages);
+			processDmdReleases(latestDmds);
 		} catch (Exception e)
 		{
 			writefln("Error in sync(): %s",e.msg);
