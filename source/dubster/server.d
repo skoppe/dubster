@@ -58,11 +58,11 @@ interface IDubsterApi
 	void postPullRequest(string _component, string _number);
 	@path("/dmd")
 	DmdVersion[] getDmds();
-	@path("/jobset")
-	JobSet[] findJobSet(JobSetQueryParams query);
-	@path("/jobset/:id")
+	@path("/jobsets")
+	JobSet[] getJobSets(JobSetQueryParams query);
+	@path("/jobsets/:id")
 	JobSet getJobSet(string _id);
-	@path("/jobset/:from/compare/:to")
+	@path("/jobsets/:from/compare/:to")
 	JobSetComparison getComparison(string _from, string _to);
 }
 struct ServerSettings
@@ -324,13 +324,13 @@ class Server : IDubsterApi
 	{
 		return knownDmds;
 	}
-	JobSet[] findJobSet(JobSetQueryParams query)
+	JobSet[] getJobSets(JobSetQueryParams query)
 	{
 		throw new RestException(400, Json(["code":Json(1006),"msg":Json("Not Implemented.")]));
 	}
 	JobSet getJobSet(string _id)
 	{
-		auto cursor = db.find!("jobSets",JobSet)(["_id": BsonObjectID.fromString(_id)]);
+		auto cursor = db.find!("jobSets",JobSet)(["_id": _id]);
 		if (cursor.empty)
 			throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found.")]));
 		return cursor.front();
@@ -339,7 +339,7 @@ class Server : IDubsterApi
 	{
 		auto readData(string id)
 		{
-			auto cursor = db.find!("results",JobResultSummary)(["job": ["jobSet": id]]);
+			auto cursor = db.find!("results",JobResultSummary)(["job.jobSet": id]);
 			auto app = appender!(JobResultSummary[]);
 			cursor.copy(app);
 			return app.data;
