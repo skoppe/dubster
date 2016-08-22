@@ -54,6 +54,8 @@ interface IDubsterApi
 	void postJob(JobRequest job);
 	@path("/results")
 	void postJobResult(JobResult results);
+	@path("/results/:id")
+	JobResult getJobResult(string _id);
 	@path("/pull/:component/:number")
 	void postPullRequest(string _component, string _number);
 	@path("/dmd")
@@ -299,6 +301,13 @@ class Server : IDubsterApi
 				throw new RestException(400, Json(["code":Json(1002),"msg":Json("Skipped: resulted in zero jobs.")]));
 			addJobs(jobs,js);
 		}
+	}
+	JobResult getJobResult(string _id)
+	{
+		auto cursor = db.find!("results",JobResult)(["job._id": _id]);
+		if (cursor.empty)
+			throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found.")]));
+		return cursor.front();
 	}
 	void postPullRequest(string _component, string _number)
 	{
