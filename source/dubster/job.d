@@ -139,7 +139,7 @@ class JobScheduler
 		auto idx = sets.retro.countUntil!(s=>s.pendingJobs != 0);
 		if (idx == -1)
 			return Nullable!(JobSet)();
-		return Nullable!(JobSet)(sets[idx]);
+		return Nullable!(JobSet)(sets.retro[idx]);
 	}
 	void updateJobSet(JobSet js)
 	{
