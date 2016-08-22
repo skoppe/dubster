@@ -224,8 +224,8 @@ struct JobResultSummary
 }
 struct JobComparison
 {
-	JobResultSummary to;
-	JobResultSummary from;	
+	JobResultSummary left;
+	JobResultSummary right;	
 }
 JobComparison[] compareJobResultSets(JobResultSummary[] setA, JobResultSummary[] setB)
 {
