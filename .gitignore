@@ -3,3 +3,11 @@ docs.json
 __dummy.html
 *.o
 *.obj
+web/node_modules/
+*.lst
+bin/
+*.sublime-*
+dubster
+__test__library__
+libdubster.a
+web/bundle.result.json
