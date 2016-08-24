@@ -39,7 +39,7 @@ struct JobSetQueryParams
 {
 	@optional string query;
 	@optional int skip;
-	@optional int limit;
+	@optional int limit = 25;
 	@optional JobTrigger[] types;
 }
 struct JobSetComparison
@@ -335,7 +335,8 @@ class Server : IDubsterApi
 	}
 	JobSet[] getJobSets(JobSetQueryParams query)
 	{
-		throw new RestException(400, Json(["code":Json(1006),"msg":Json("Not Implemented.")]));
+		Bson constraints;
+		return db.find!("jobSets",JobSet)(constraints,query.skip,query.limit).sort(["created":-1]).array();
 	}
 	JobSet getJobSet(string _id)
 	{
@@ -423,7 +424,8 @@ class Server : IDubsterApi
 			case JobTrigger.DruntimePullRequest: pull = "druntime"; break;
 			case JobTrigger.PhobosPullRequest: pull = "phobos"; break;
 		}
-		string ver = "master + "~pull~"#"~js.triggerId;
+		string masterSha = getDmdMasterLatestSha();
+		string ver = masterSha~" + "~pull~"#"~js.triggerId;
 		assert(ver.isValidDiggerVersion());
 		return DmdVersion(ver);
 	}

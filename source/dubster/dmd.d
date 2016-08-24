@@ -93,19 +93,34 @@ unittest
 auto getDmdTags()
 {
 	GitTag[] tags;
-	int statusCode;
 	// we could also request ?page=2. look into the Link header
 	requestHTTP("https://api.github.com/repos/dlang/dmd/tags",(scope req){
 		req.method = HTTPMethod.GET;
 	},(scope res){
-
 		scope (exit) res.dropBody();
-		statusCode = res.statusCode;
+		int statusCode = res.statusCode;
 		if (statusCode != 200)
 			throw new Exception("Invalid response");
 		tags = res.readJson.deserializeJson!(GitTag[]);
 	});
 	return tags;
+}
+auto getDmdMasterLatestSha()
+{
+	struct Item
+	{
+		string sha;
+	}
+	Item[] items;
+	requestHTTP("https://api.github.com/repos/dlang/dmd/commits?per_page=1",(scope req){
+		req.method = HTTPMethod.GET;
+	},(scope res){
+		scope (exit) res.dropBody();
+		if (res.statusCode != 200)
+			throw new Exception("Invalid response");
+		items = res.readJson.deserializeJson!(Item[]);
+	});
+	return items[0].sha;
 }
 auto toReleases(Tags)(Tags tags)
 	if (isInputRange!Tags && is(ElementType!(Tags) == GitTag))
