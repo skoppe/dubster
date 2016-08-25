@@ -49,9 +49,9 @@ struct JobSetComparison
 @path("/api/v1")
 interface IDubsterApi
 {
-	@path("/job")
+	@path("/worker/job")
 	Json getJob();
-	@path("/job")
+	@path("/worker/job")
 	void postJob(JobRequest job);
 	@path("/results")
 	void postJobResult(JobResult results);
@@ -65,6 +65,8 @@ interface IDubsterApi
 	JobSet[] getJobSets(JobSetQueryParams query);
 	@path("/jobsets/:id")
 	JobSet getJobSet(string _id);
+	@path("/jobsets/:id/jobs")
+	JobResult[] getJobsInJobSet(string _id, int skip = 0, int limit = 24);
 	@path("/jobsets/:from/compare/:to")
 	JobSetComparison getComparison(string _from, string _to);
 }
@@ -77,13 +79,13 @@ template hasBsonId(T)
 {
 	enum hasBsonId = true; // TODO: check if T has a member that is a BsonObjectID and is named _id or has an @name("_id") attribute
 }
-struct PersistenceMessage
+struct EventMessage
 {
 	string collection;
 	string type;
 	Json data;
 }
-class PersistenceDispatcher
+class EventDispatcher
 {
 	private Task[] subscribers;
 	void subscribe(Task t)
@@ -98,7 +100,7 @@ class PersistenceDispatcher
 		subscribers.remove(idx);
 		subscribers = subscribers[0..$-1];
 	}
-	private void dispatch(PersistenceMessage msg)
+	private void dispatch(EventMessage msg)
 	{
 		Task[] failedSends;
 		foreach (s; subscribers)
@@ -108,10 +110,10 @@ class PersistenceDispatcher
 	}
 	private void dispatch(string name, T)(string type, T t)
 	{
-		dispatch(PersistenceMessage(name,type,t.serializeToJson()));
+		dispatch(EventMessage(name,type,t.serializeToJson()));
 	}
 }
-class Persistence : PersistenceDispatcher
+class Persistence : EventDispatcher
 {
 	private MongoCollection pendingJobs, executingJobs, dmds, packages, results, jobSets;
 	this(MongoDatabase db)
@@ -349,6 +351,10 @@ class Server : IDubsterApi
 		if (cursor.empty)
 			throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found.")]));
 		return cursor.front();
+	}
+	JobResult[] getJobsInJobSet(string _id, int skip = 0, int limit = 24)
+	{
+		return db.find!("results",JobResult)(["job.jobset":_id],skip,limit).sort(["start":-1]).array();
 	}
 	JobSetComparison getComparison(string _to, string _from)
 	{
