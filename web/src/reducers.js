@@ -23,8 +23,8 @@ function jobSets(state = jobSetsDefault, action)
 			var {status = 'failed', errorCode, errorMessage} = action.data
 			return state.merge(Immutable.fromJS({status,errorCode,errorMessage}))
 		case 'JOBSETS_UPDATE':
-			var key = state.get('data').findKey(item=>item.id == action.data.id)
-			return state.setIn(['data',key],action.data)
+			var key = state.get('data').findKey(item=>item.id == action.data.selector._id)
+			return state.setIn(['data',key],state.getIn(['data',key]).merge(Immutable.fromJS(action.data.updates.$set)))
 		case 'JOBSETS_APPEND':
 			return state.get('data').unshift(action.data)
 	}
