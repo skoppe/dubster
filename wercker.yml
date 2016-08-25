@@ -32,6 +32,7 @@ deploy-docker-hub:
       password: $DOCKERHUBPASS
       email: $DOCKERHUBEMAIL
       repository: skoppe/dubster
-      entrypoint: "/app/dubster"
+      working-dir:  "/app"
+      entrypoint: "./dubster"
       volumes: "/app/gen"
       ports: "8080"
