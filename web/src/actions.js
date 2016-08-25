@@ -25,7 +25,7 @@ export function doDataFeed(){
 		dispatch({type: "DATA_FEED_START"})
 
 		api.dataFeed().subscribe((event)=>{
-			let {collection, type, data} = event.data
+			let {collection, type, data} = JSON.parse(event.data)
 			let action = (collection+"_"+type).toUpperCase()
 			dispatch({type:action, data})
 		},(err)=>{

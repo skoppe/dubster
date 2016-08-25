@@ -262,11 +262,11 @@ class Server : IDubsterApi
 		{
 			js.finished = getTimestamp();
 			scheduler.removeJobSet(js.id);
-			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["executingJobs":Bson(js.executingJobs),"completedJobs":Bson(js.completedJobs),"finished":Bson(js.finished)]]);
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["executingJobs":Bson(js.executingJobs),"completedJobs":Bson(js.completedJobs),"success":Bson(js.success),"failed":Bson(js.failed),"unknown":Bson(js.unknown),"finished":Bson(js.finished)]]);
 		} else
 		{
 			scheduler.updateJobSet(js);
-			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["executingJobs":Bson(js.executingJobs),"completedJobs":Bson(js.completedJobs)]]);
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["executingJobs":Bson(js.executingJobs),"completedJobs":Bson(js.completedJobs),"success":Bson(js.success),"failed":Bson(js.failed),"unknown":Bson(js.unknown)]]);
 		}
 	}
 	void postJob(JobRequest job)
