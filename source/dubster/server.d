@@ -205,7 +205,7 @@ class Server : IDubsterApi
 		{
 			while (true) {
 				receiveTimeout(1.seconds,
-					(PersistenceMessage message){
+					(EventMessage message){
 						socket.send(message.serializeToJson().toString());
 					});
 				if (!socket.connected) break;
