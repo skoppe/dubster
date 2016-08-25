@@ -36,6 +36,8 @@ struct Job
 	DmdVersion dmd;
 	DubPackage pkg;
 	string jobSet;
+	JobTrigger trigger;
+	string triggerId;
 }
 struct JobResult
 {
@@ -209,7 +211,7 @@ auto createJobs(DmdVersions,DubPackages)(DmdVersions dmds, DubPackages packages,
 	import std.algorithm : cartesianProduct;
 	return dmds.cartesianProduct(packages).map!((t){
 		auto sha = sha1Of(t[0].id ~ t[1]._id).toHexString().text;
-		return Job(sha,t[0],t[1],js.id);
+		return Job(sha,t[0],t[1],js.id,js.trigger,js.triggerId);
 	});
 }
 struct JobSummary
