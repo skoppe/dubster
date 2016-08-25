@@ -258,6 +258,12 @@ class Server : IDubsterApi
 		auto js = scheduler.getJobSet(results.job.jobSet);
 		js.executingJobs -= 1;
 		js.completedJobs += 1;
+		if (results.error.isSuccess)
+			js.success += 1;
+		if (results.error.isFailed)
+			js.failed += 1;
+		if (results.error.isUndefined)
+			js.unknown += 1;
 		if (js.pendingJobs == 0)
 		{
 			js.finished = getTimestamp();
@@ -384,6 +390,8 @@ class Server : IDubsterApi
 		if (newDmds.length > 0)
 			writefln("Got %s new dmds", newDmds.length);
 		auto sameDmds = latest.setIntersection(knownDmds).array();
+		if (newDmds == 0 && sameDmds.length == knownDmds.length)
+			return;
 
 		foreach(dmd; newDmds)
 		{
@@ -404,6 +412,8 @@ class Server : IDubsterApi
 		if (newPackages.length > 0)
 			writefln("Got %s new packages", newPackages.length);
 		auto samePackages = latest.setIntersection(knownPackages).array();
+		if (newPackages == 0 && samePackages.length == knownPackages.length)
+			return;
 
 		foreach(pkg; newPackages)
 		{

@@ -44,6 +44,18 @@ struct ErrorStats
 	int exitCode;
 	string details;
 }
+bool isSuccess(ErrorStats s)
+{
+	return s.type == ErrorType.None;
+}
+bool isFailed(ErrorStats s)
+{
+	return s.type == ErrorType.DmdNonZeroExit || s.type == ErrorType.UnittestNonZeroExit;
+}
+bool isUndefined(ErrorStats s)
+{
+	return !(s.isSuccess && s.isFailure);
+}
 ErrorStats parseError(string results)
 {
 	if (results.canFind("All unit tests have been run successfully.\n") ||

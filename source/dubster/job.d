@@ -67,6 +67,9 @@ struct JobSet
 	long pendingJobs;
 	long executingJobs;
 	long completedJobs;
+	int success;
+	int failed;
+	int unknown;
 	this(JobTrigger t, string tId, int p = 0)
 	{
 		trigger = t;
