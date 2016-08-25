@@ -46,6 +46,7 @@ struct JobSetComparison
 {
 	JobComparison[] items;
 }
+@path("/api/v1")
 interface IDubsterApi
 {
 	@path("/job")
@@ -169,6 +170,13 @@ class Persistence : PersistenceDispatcher
 	{
 		return getCollection!(name).find!(T,Query)(q,null,QueryFlags.None,skip,limit);
 	}
+	auto find(string name, T)(int skip = 0, int limit = 0)
+	{
+		auto cursor = getCollection!(name).find!(T).skip(skip);
+		if (limit == 0)
+			return cursor;
+		return cursor.limit(limit);
+	}
 }
 class Server : IDubsterApi
 {
@@ -184,9 +192,9 @@ class Server : IDubsterApi
 		this.db = db;
 
 		auto router = new URLRouter;
-		router.get("/events", handleWebSockets(&handleWebSocketConnection));
-		router.get("/public/*", serveStaticFiles("."));
 		router.registerRestInterface(this);
+		router.get("/events", handleWebSockets(&handleWebSocketConnection));
+		router.get("/*", serveStaticFiles("./public/"));
 		listenHTTP(s.httpSettings, router);
 
 		restore();
@@ -335,8 +343,7 @@ class Server : IDubsterApi
 	}
 	JobSet[] getJobSets(JobSetQueryParams query)
 	{
-		Bson constraints;
-		return db.find!("jobSets",JobSet)(constraints,query.skip,query.limit).sort(["created":-1]).array();
+		return db.find!("jobSets",JobSet)(query.skip,query.limit).sort(["created":-1]).array();
 	}
 	JobSet getJobSet(string _id)
 	{
