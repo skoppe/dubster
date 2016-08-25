@@ -32,22 +32,15 @@ export function searchJobsets(skip,limit = 16)
 export function dataFeed()
 {
 	let subject = new Rx.Subject();
-	(function(){
-		var socket
-
-		socket = new WebSocket("ws"+host.substring(host.indexOf("://"))+"/events")
-		socket.onopen = function() {
-			subject.onNext({status:{"connected":true}});
-		}
-		socket.onmessage = function(message) {
-			subject.onNext({message})
-		}
-		socket.onclose = function() {
-			subject.onNext({status:{"connected":false}});
-		}
-		socket.onerror = function() {
-			console.log("Error!",arguments);
-		}
-	})();
+	var socket = new WebSocket("ws"+host.substring(host.indexOf("://"))+"/events")
+	socket.onmessage = function(message) {
+		subject.onNext({message})
+	}
+	socket.onclose = function() {
+		subject.onCompleted()
+	}
+	socket.onerror = function(err) {
+		subject.onError(err)
+	}
 	return subject;
 }
