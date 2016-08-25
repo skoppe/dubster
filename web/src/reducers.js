@@ -1,29 +1,30 @@
-// import * as actions from './actions.js';
 import Immutable from 'immutable';
 
-/*const searchDefaults = Immutable.fromJS({
-		results: [],
-		query: null,
-		itemsLoaded: null,
-		pageSize: 12,
-		totalItems: null,
-		status: null
-	});
-function reduceSearch(search = searchDefaults, action)
+const jobSetsDefault = Immutable.fromJS({
+	loaded: 0,
+	eof: null,
+	status: null,
+	errorCode: null,
+	errorMessage: null,
+	data: []
+});
+function jobSets(state = jobSetsDefault, action)
 {
 	switch(action.type)
 	{
-		case actions.SEARCH_PODCAST_START:
-			return search.set('status','loading');
-		case actions.SEARCH_PODCAST_SUCCESS:
-			search = search.set('status','success');
-			let {itemsLoaded, results, totalItems, query} = action.response;
-			return search.merge(Immutable.fromJS({itemsLoaded, results, totalItems, query}));
-		case actions.SEARCH_PODCAST_FAILED:
-			let {status = 'failed', xhrStatus, code, message} = action;
-			return search.merge(Immutable.fromJS({status,xhrStatus,code,message}));
+		case 'QUERY_JOBSETS_START':
+			return state.set('status','loading')
+		case 'QUERY_JOBSETS_SUCCESS':
+			var {status = 'loaded', items, skip, limit} = action.data
+			return state
+				.set('data',state.get('data').concat(Immutable.fromJS(items)))
+				.merge(Immutable.fromJS({status, loaded: skip+limit, eof: items.length != limit}))
+		case 'QUERY_JOBSETS_FAILED':
+			var {status = 'failed', errorCode, errorMessage} = action.data
+			return state.merge(Immutable.fromJS({status,errorCode,errorMessage}))
 	}
-	return search;
-}*/
+	return jobSetsDefault
+}
 export default {
+	jobSets
 }
