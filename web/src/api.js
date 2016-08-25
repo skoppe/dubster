@@ -34,7 +34,7 @@ export function dataFeed()
 	let subject = new Rx.Subject();
 	var socket = new WebSocket("ws"+host.substring(host.indexOf("://"))+"/events")
 	socket.onmessage = function(message) {
-		subject.onNext({message})
+		subject.onNext(message)
 	}
 	socket.onclose = function() {
 		subject.onCompleted()

@@ -188,7 +188,7 @@ class Server : IDubsterApi
 		auto router = new URLRouter;
 		router.registerRestInterface(this);
 		router.get("/events", handleWebSockets(&handleWebSocketConnection));
-		router.get("/*", serveStaticFiles("./public/"));
+		router.get("/*", serveStaticFiles("public/"));
 		listenHTTP(s.httpSettings, router);
 
 		restore();
