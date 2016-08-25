@@ -137,14 +137,6 @@ class Persistence : PersistenceDispatcher
 		getCollection!(name).insert(t);
 		dispatch!(name)("append",t);
 	}
-	void replace(string name, T)(T t)
-	{
-		static assert(hasBsonId!T);
-		auto collection = getCollection!name;
-		try collection.drop(); catch(Exception e) {}
-		collection.insert(t);
-		dispatch!(name)("replace",t);
-	}
 	auto readAll(string name, T)()
 	{
 		static assert(hasBsonId!T);
@@ -390,7 +382,7 @@ class Server : IDubsterApi
 		if (newDmds.length > 0)
 			writefln("Got %s new dmds", newDmds.length);
 		auto sameDmds = latest.setIntersection(knownDmds).array();
-		if (newDmds == 0 && sameDmds.length == knownDmds.length)
+		if (newDmds.length == 0 && sameDmds.length == knownDmds.length)
 			return;
 
 		foreach(dmd; newDmds)
@@ -402,8 +394,13 @@ class Server : IDubsterApi
 				continue;
 			addJobs(jobs,js);
 		}
-		knownDmds = chain(newDmds,sameDmds).array.sort().array();
-		db.replace!"dmds"(knownDmds);
+		knownDmds = chain(newDmds,sameDmds).array;
+		knownDmds.sort();
+		auto oldDmds = knownDmds.setDifference(latest).array();
+		if (oldDmds.length > 0)
+			db.remove!"dmds"(oldDmds);
+		if (newDmds.length > 0)
+			db.append!"dmds"(newDmds);
 	}
 	private void processDubPackages(DubPackages)(DubPackages latest)
 		if (is(ElementType!DubPackages == DubPackage))
@@ -412,7 +409,7 @@ class Server : IDubsterApi
 		if (newPackages.length > 0)
 			writefln("Got %s new packages", newPackages.length);
 		auto samePackages = latest.setIntersection(knownPackages).array();
-		if (newPackages == 0 && samePackages.length == knownPackages.length)
+		if (newPackages.length == 0 && samePackages.length == knownPackages.length)
 			return;
 
 		foreach(pkg; newPackages)
@@ -424,8 +421,13 @@ class Server : IDubsterApi
 				continue;
 			addJobs(jobs,js);
 		}
-		knownPackages = chain(newPackages,samePackages).array.sort().array();
-		db.replace!"packages"(knownPackages);
+		knownPackages = chain(newPackages,samePackages).array();
+		knownPackages.sort();
+		auto oldPackages = knownPackages.setDifference(latest).array();
+		if (oldPackages.length > 0)
+			db.remove!"packages"(oldPackages);
+		if (newPackages.length > 0)
+			db.append!"packages"(newPackages);
 	}
 	private DmdVersion createDmdVersion(JobSet js)
 	{
