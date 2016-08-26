@@ -54,7 +54,7 @@ bool isFailed(ErrorStats s)
 }
 bool isUndefined(ErrorStats s)
 {
-	return !(s.isSuccess && s.isFailed);
+	return !(s.isSuccess || s.isFailed);
 }
 ErrorStats parseError(string results)
 {
