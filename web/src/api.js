@@ -32,7 +32,7 @@ export function searchJobsets(skip,limit = 16)
 export function dataFeed()
 {
 	let subject = new Rx.Subject();
-	var socket = new WebSocket("ws"+host.substring(host.indexOf("://"))+"/events")
+	var socket = new WebSocket("wss"+host.substring(host.indexOf("://"))+"/events")
 	socket.onmessage = function(message) {
 		subject.onNext(message)
 	}
