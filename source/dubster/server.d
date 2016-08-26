@@ -354,7 +354,7 @@ class Server : IDubsterApi
 	}
 	JobResult[] getJobsInJobSet(string _id, int skip = 0, int limit = 24)
 	{
-		return db.find!("results",JobResult)(["job.jobset":_id],skip,limit).sort(["start":-1]).array();
+		return db.find!("results",JobResult)(["job.jobSet":_id],skip,limit).sort(["start":-1]).array();
 	}
 	JobSetComparison getComparison(string _to, string _from)
 	{
