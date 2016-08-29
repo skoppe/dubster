@@ -1,4 +1,4 @@
-box: skoppe/dbuild:v2.071.1-1
+box: skoppe/dubster-build
 steps:
   - wercker/npm-install@1.1.4
 build:
