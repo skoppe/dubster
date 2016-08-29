@@ -162,7 +162,7 @@ class Persistence : EventDispatcher
 	}
 	auto find(string name, T, Query)(Query q, int skip = 0, int limit = 0)
 	{
-		return getCollection!(name).find!(T,Query)(q,null,QueryFlags.None,skip,limit);
+		return getCollection!(name).find!(T,Query)(q,null,QueryFlags.None).skip(skip).limit(limit);
 	}
 	auto find(string name, T)(int skip = 0, int limit = 0)
 	{
