@@ -1,4 +1,6 @@
 box: skoppe/dbuild:v2.071.1-1
+steps:
+  - wercker/npm-install@1.1.4
 build:
   steps:
   - script:
@@ -13,6 +15,13 @@ build:
         mkdir -p $WERCKER_CACHE_DIR/dub
         mkdir -p ~/.dub
         ln -s $WERCKER_CACHE_DIR/dub ~/.dub/packages
+  - npm-install:
+    cwd: web/
+  - script:
+      name: build-frontend
+      code: |
+        cd web
+        ./node_modules/.bin/gulp
   - script:
       name: build
       code: |
