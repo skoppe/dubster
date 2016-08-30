@@ -20,7 +20,8 @@ module dubster.dub;
 import vibe.core.core : runTask;
 import vibe.http.client : requestHTTP;
 import vibe.stream.operations : readAllUTF8;
-import vibe.data.serialization : name;
+import vibe.data.serialization : Name = name;
+import vibe.data.json : deserializeJson;
 import std.range : zip;
 import std.array : array;
 import std.algorithm : map, filter;
@@ -31,10 +32,12 @@ struct DubPackage
 	string _id;
 	string name;
 	string ver;
-	this(string n, string v)
+	string description;
+	this(string n, string v, string d = "")
 	{
 		name = n;
 		ver = v;
+		description = d;
 		_id = name~":"~ver;
 	}
 	int opCmp(inout const DubPackage other)
@@ -69,18 +72,18 @@ unittest
 }
 auto parseCodeDlangOrg()
 {
+	struct Package
+	{
+		@Name("version") string ver;
+		string name;
+		string description;
+	}
 	DubPackage[] packages;
-	requestHTTP("http://code.dlang.org/",
+	requestHTTP("https://code.dlang.org/api/packages/search",
 		(scope req){
-
 		},
 		(scope res){
-			import arsd.dom;
-			auto doc = new Document(res.bodyReader.readAllUTF8());
-			auto rows = doc.querySelectorAll("#content > table tr");//.map!(d=>d.innerHTML);
-			auto names = rows.map!(p=>p.querySelector("tr td a")).filter!(p=>p !is null).map!(p=>p.innerHTML);
-			auto versions = rows.map!(p=>p.querySelector("tr td:nth-child(2)")).filter!(p=>p !is null).map!(p=>p.firstInnerText()[1..$]);
-			packages = names.zip(versions).map!(z=>DubPackage(z[0],z[1])).array();
+			packages = res.readJson.deserializeJson!(Package[]).map!(p=>DubPackage(p.name,p.ver,p.description)).array;
 		}
 	);
 	return packages;
