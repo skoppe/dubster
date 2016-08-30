@@ -171,6 +171,10 @@ class Persistence : EventDispatcher
 			return cursor;
 		return cursor.limit(limit);
 	}
+	bool exists(string name, Query)(Query q)
+	{
+		return !getCollection!(name).find(q).empty();
+	}
 }
 class Server : IDubsterApi
 {
@@ -394,15 +398,16 @@ class Server : IDubsterApi
 		foreach(dmd; newDmds)
 		{
 			auto js = JobSet(JobTrigger.DmdRelease, dmd.ver);
-			// todo: see if jobset already exists, if it does, continue
+			if (db.exists!"jobSets"(["_id":js.id]))
+				continue;
 			auto jobs = createJobs([dmd],knownPackages,js).array();
 			if (jobs.length == 0)
 				continue;
 			addJobs(jobs,js);
 		}
+		auto oldDmds = knownDmds.setDifference(latest).array();
 		knownDmds = chain(newDmds,sameDmds).array;
 		knownDmds.sort();
-		auto oldDmds = knownDmds.setDifference(latest).array();
 		if (oldDmds.length > 0)
 			db.remove!"dmds"(oldDmds);
 		if (newDmds.length > 0)
@@ -421,15 +426,16 @@ class Server : IDubsterApi
 		foreach(pkg; newPackages)
 		{
 			auto js = JobSet(JobTrigger.PackageUpdate,pkg.name~":"~pkg.ver);
-			// todo: see if jobset already exists, if it does, continue
+			if (db.exists!"jobSets"(["_id":js.id]))
+				continue;
 			auto jobs = createJobs(knownDmds,[pkg],js).array();
 			if (jobs.length == 0)
 				continue;
 			addJobs(jobs,js);
 		}
+		auto oldPackages = knownPackages.setDifference(latest).array();
 		knownPackages = chain(newPackages,samePackages).array();
 		knownPackages.sort();
-		auto oldPackages = knownPackages.setDifference(latest).array();
 		if (oldPackages.length > 0)
 			db.remove!"packages"(oldPackages);
 		if (newPackages.length > 0)

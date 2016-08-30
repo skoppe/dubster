@@ -37,7 +37,7 @@ struct DubPackage
 		ver = v;
 		_id = name~":"~ver;
 	}
-	int opCmp(ref const DubPackage other)
+	int opCmp(inout const DubPackage other)
 	{
 		import std.algorithm : cmp;
 		auto r1 = cmp(name,other.name);
@@ -45,6 +45,13 @@ struct DubPackage
 			return r1;
 		return cmp(ver,other.ver);
 	}
+}
+unittest
+{
+	assert(DubPackage("abc","1.0.0") == DubPackage("abc","1.0.0"));
+	assert(DubPackage("abc","1.0.0") < DubPackage("abc","2.0.0"));
+	assert(DubPackage("abc","2.0.0") > DubPackage("abc","1.0.0"));
+	assert(DubPackage("abc","2.0.0") < DubPackage("def","1.0.0"));
 }
 auto getDiff(DubPackage[] pa, DubPackage[] pb)
 {
