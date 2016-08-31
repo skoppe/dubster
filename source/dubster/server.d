@@ -347,7 +347,14 @@ class Server : IDubsterApi
 	}
 	JobSet[] getJobSets(JobSetQueryParams query)
 	{
-		return db.find!("jobSets",JobSet)(query.skip,query.limit).sort(["created":-1]).array();
+		Bson[string] constraints;
+		if (query.query.length > 0)
+			constraints["triggerId"] = Bson(["$regex": Bson(query.query)]);
+		if (query.types.length > 0)
+			constraints["trigger"] = Bson(["$in": Bson(query.types.map!(to!string).map!(a=>Bson(a)).array)]);
+		if (constraints.length == 0)
+			return db.find!("jobSets",JobSet)(query.skip,query.limit).sort(["created":-1]).array();
+		return db.find!("jobSets",JobSet)(constraints,query.skip,query.limit).sort(["created":-1]).array();
 	}
 	JobSet getJobSet(string _id)
 	{
