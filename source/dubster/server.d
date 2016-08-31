@@ -44,6 +44,8 @@ struct JobSetQueryParams
 }
 struct JobSetComparison
 {
+	JobSet to;
+	JobSet from;
 	JobComparison[] items;
 }
 @path("/api/v1")
@@ -376,9 +378,19 @@ class Server : IDubsterApi
 			cursor.copy(app);
 			return app.data;
 		}
-		auto toSet = readData(_to);
-		auto fromSet = readData(_from);
-		return JobSetComparison(compareJobResultSets(toSet,fromSet));
+		auto getJobSet(string id)
+		{
+			auto cursor = db.find!("jobSets",JobSet)(["_id":_to]);
+			if (cursor.empty)
+				throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found JobSet "~_to)]));
+			return cursor.front();			
+		}
+		auto toJobSet = getJobSet(_to);
+		auto fromJobSet = getJobSet(_from);
+
+		auto toJobs = readData(_to);
+		auto fromJobs = readData(_from);
+		return JobSetComparison(toJobSet,fromJobSet,compareJobResultSets(toJobs,fromJobs));
 	}
 	private void restore()
 	{
