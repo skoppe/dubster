@@ -380,7 +380,7 @@ class Server : IDubsterApi
 		}
 		auto getJobSet(string id)
 		{
-			auto cursor = db.find!("jobSets",JobSet)(["_id":_to]);
+			auto cursor = db.find!("jobSets",JobSet)(["_id":id]);
 			if (cursor.empty)
 				throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found JobSet "~_to)]));
 			return cursor.front();			
@@ -390,7 +390,7 @@ class Server : IDubsterApi
 
 		auto toJobs = readData(_to);
 		auto fromJobs = readData(_from);
-		return JobSetComparison(toJobSet,fromJobSet,compareJobResultSets(toJobs,fromJobs));
+		return JobSetComparison(toJobSet,fromJobSet,compareJobResultSets(fromJobs,toJobs));
 	}
 	private void restore()
 	{
