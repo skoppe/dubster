@@ -576,7 +576,7 @@ void updatePackageStats(Persistence db, JobResult results)
 			db.update!(collection)([indexField:id],["$set":["success":(stats.front().success + 1)]]);
 		else if (results.error.isFailed)
 			db.update!(collection)([indexField:id],["$set":["failed":(stats.front().failed + 1)]]);
-		else if (results.error.isUndefined)
+		else
 			db.update!(collection)([indexField:id],["$set":["unknown":(stats.front().unknown + 1)]]);
 	}
 	if (results.job.trigger != JobTrigger.DmdRelease)
@@ -587,9 +587,17 @@ void updatePackageStats(Persistence db, JobResult results)
 void updateComputedData(Persistence db)
 {
 	logInfo("Updating Computed Data");
-	auto cursor = db.find!("results",JobResult)();
-	cursor.each!(r=>{
-		db.updatePackageStats(r);
-	});
+	int skip = 0;
+	do
+	{
+		auto cursor = db.find!("results",JobResult)(skip,24).array();
+		foreach(r; cursor)
+		{
+			db.updatePackageStats(r);
+			logInfo("%s",r);
+		}
+		if (cursor.length != 24)
+			break;
+	} while (1);
 	logInfo("Computed Data Updated");
 }
