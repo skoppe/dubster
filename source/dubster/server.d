@@ -592,12 +592,10 @@ void updateComputedData(Persistence db)
 	{
 		auto cursor = db.find!("results",JobResult)(skip,24).array();
 		foreach(r; cursor)
-		{
 			db.updatePackageStats(r);
-			logInfo("%s",r);
-		}
 		if (cursor.length != 24)
 			break;
+		skip += 24;
 	} while (1);
 	logInfo("Computed Data Updated");
 }
