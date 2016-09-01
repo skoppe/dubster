@@ -369,7 +369,7 @@ class Server : IDubsterApi
 	{
 		return db.find!("results",JobResult)(["job.jobSet":_id],skip,limit).sort(["start":-1]).array();
 	}
-	JobSetComparison getComparison(string _to, string _from)
+	JobSetComparison getComparison(string _from, string _to)
 	{
 		auto readData(string id)
 		{
