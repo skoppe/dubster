@@ -24,10 +24,25 @@ function get(url, params)
 	};
 	return Rx.DOM.ajax(cnf)
 }
-export function searchJobsets(skip,limit = 16)
+export function searchJobsets(query)
 {
-	let query = {skip, limit}
 	return get('/jobsets',{query: JSON.stringify(query)});
+}
+export function getJobsInJobSets(jobSet, skip, limit = 16)
+{
+	return get('/jobsets/'+jobSet+'/jobs',{skip, limit});
+}
+export function getJob(id)
+{
+	return get('/results/'+id);
+}
+export function getJobSet(id)
+{
+	return get('/jobsets/'+id)
+}
+export function getJobSetCompare(frm,to)
+{
+	return get('/jobsets/'+frm+'/compare/'+to)
 }
 export function dataFeed()
 {

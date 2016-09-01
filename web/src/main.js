@@ -13,10 +13,10 @@ import { Provider } from 'react-redux';
 import {
   default as canUseDOM,
 } from "can-use-dom";
-import App from './components/app.js';
+import Components from './components';
 // import Podcasts from './components/podcasts.js';
 // import Playlists from './components/playlists.js';
-import { Router, Route, browserHistory, Redirect } from 'react-router'
+import { IndexRoute, Router, Route, browserHistory, Redirect } from 'react-router'
 import { syncHistoryWithStore } from 'react-router-redux'
 
 const history = syncHistoryWithStore(browserHistory, store)
@@ -25,11 +25,16 @@ let container = document.getElementById('app');
 container && canUseDOM && ReactDOM.render(
   <Provider store={store}>
   	<Router history={history}>
-      <Route path="/" component={App}>
-       <Redirect from="/index.html" to="/" />
+      <Route path="/" component={Components.App}>
+      	<IndexRoute component={Components.Dashboard}/>
+      	<Route path="/jobset/:jobset" component={Components.JobSet}/>
+      	<Route path="/jobset/:jobset/job/:job" component={Components.Job}/>
+      	<Route path="/jobset/:from/compare/:to" component={Components.JobSetCompare}/>
+      	<Redirect from="/index.html" to="/" />
       </Route>
     </Router>
   </Provider>,
   container
 )
 
+      	// <Route path="/job/:job" component={Components.Job}/>

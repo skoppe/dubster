@@ -18,10 +18,15 @@ module.exports = {
 		preLoaders: []
 	},
 	plugins: [
-		new webpack.optimize.OccurenceOrderPlugin(),
 		new webpack.DefinePlugin({
 			'process.env.NODE_ENV': JSON.stringify('production'),
+			'process.env.REACT_SYNTAX_HIGHLIGHTER_LIGHT_BUILD': true
 		}),
+		new webpack.optimize.DedupePlugin(),
+	    new webpack.LoaderOptionsPlugin({
+	      minimize: true,
+	      debug: false
+	    }),
 		new webpack.optimize.UglifyJsPlugin({
 			compressor: { warnings: false },
 		}),
