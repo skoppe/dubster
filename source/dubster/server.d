@@ -522,7 +522,9 @@ class Server : IDubsterApi
 			logInfo("Got %s previous job sets",previousJobSets.length);
 		scheduler.restore(previousJobs,previousJobSets);
 		knownDmds = db.readAll!("dmds",DmdVersion).array();
+		knownDmds.sort();
 		knownPackages = db.readAll!("packages",DubPackage).array();
+		knownPackages.sort();
 	}
 	private void processDmdReleases(DmdVersions)(DmdVersions latest)
 		if (is(ElementType!DmdVersions == DmdVersion))
