@@ -61,6 +61,14 @@ struct PackageQueryParams
 	@optional int skip;
 	@optional int limit = 25;
 }
+struct JobResultsQueryParams
+{
+	@optional @name("package") string pkg;
+	@optional @name("version") string ver;
+	@optional JobTrigger[] types;
+	@optional int skip;
+	@optional int limit = 24;
+}
 struct JobSetComparison
 {
 	JobSet to;
@@ -76,6 +84,8 @@ interface IDubsterApi
 	void postJob(JobRequest job);
 	@path("/worker/results")
 	void postJobResult(JobResult results);
+	@path("/results")
+	JobResult[] getJobResults(JobResultsQueryParams query);
 	@path("/results/:id")
 	JobResult getJobResult(string _id);
 	@path("/pull/:component/:number")
@@ -93,6 +103,8 @@ interface IDubsterApi
 	@path("/packages")
 	PackageStats[] getPackages(PackageQueryParams query);
 	@path("/packages/:package")
+	PackageStats getPackage(string _package);
+	@path("/packages/:package/versions")
 	PackageVersionStats[] getVersionedPackages(string _package, int skip = 0, int limit = 24);
 }
 struct ServerSettings
@@ -104,12 +116,24 @@ template hasBsonId(T)
 {
 	enum hasBsonId = true; // TODO: check if T has a member that is a BsonObjectID and is named _id or has an @name("_id") attribute
 }
+struct PackageVersionInfo
+{
+	string name;
+	string ver;
+}
 struct PackageVersionStats
 {
-	DubPackage pkg;
+	PackageVersionInfo pkg;
 	int success;
 	int failed;
 	int unknown;
+	this(DubPackage s, int success, int failed, int unknown)
+	{
+		pkg = PackageVersionInfo(s.name,s.ver);
+		this.success = success;
+		this.failed = failed;
+		this.unknown = unknown;
+	}
 }
 struct PackageInfo
 {
@@ -159,6 +183,10 @@ class EventDispatcher
 		foreach (t; failedSends)
 			unsubscribe(t);
 	}
+	private void dispatch(string name)(string type)
+	{
+		dispatch(EventMessage(name,type,Json()));
+	}
 	private void dispatch(string name, T)(string type, T t)
 	{
 		dispatch(EventMessage(name,type,t.serializeToJson()));
@@ -202,6 +230,11 @@ class Persistence : EventDispatcher
 		static assert(hasBsonId!T);
 		getCollection!(name).remove(t);
 		dispatch!(name)("remove",t);
+	}
+	void drop(string name)()
+	{
+		getCollection!(name).remove();
+		dispatch!(name)("remove");
 	}
 	void update(string name, Selector, Updates)(Selector s, Updates u)
 	{
@@ -368,6 +401,19 @@ class Server : IDubsterApi
 			addJobs(jobs,js);
 		}
 	}
+	JobResult[] getJobResults(JobResultsQueryParams query)
+	{
+		Bson[string] constraints;
+		if (query.pkg.length > 0)
+			constraints["job.pkg.name"] = Bson(query.pkg);
+		if (query.ver.length > 0)
+			constraints["job.pkg.ver"] = Bson(query.ver);
+		if (query.types.length > 0)
+			constraints["trigger"] = Bson(["$in": Bson(query.types.map!(to!string).map!(a=>Bson(a)).array)]);
+		if (constraints.length == 0)
+			return db.find!("results",JobResult)(query.skip,query.limit).sort(["created":-1]).array();
+		return db.find!("results",JobResult)(constraints,query.skip,query.limit).sort(["created":-1]).array();
+	}
 	JobResult getJobResult(string _id)
 	{
 		auto cursor = db.find!("results",JobResult)(["job._id": _id]);
@@ -452,6 +498,13 @@ class Server : IDubsterApi
 		if (constraints.length == 0)
 			return db.find!("packageStats",PackageStats)(query.skip,query.limit).array();
 		return db.find!("packageStats",PackageStats)(constraints,query.skip,query.limit).array();
+	}
+	PackageStats getPackage(string _package)
+	{
+		auto cursor = db.find!("packageStats",PackageStats)(["pkg.name":_package]);
+		if (cursor.empty)
+			throw new RestException(404, Json(["code":Json(1007),"msg":Json("Could not find package")]));
+		return cursor.front();
 	}
 	PackageVersionStats[] getVersionedPackages(string _name, int skip = 0, int limit = 24)
 	{
@@ -598,6 +651,8 @@ void updateComputedData(Persistence db)
 {
 	logInfo("Updating Computed Data");
 	int skip = 0;
+	db.drop!("packageStats");
+	db.drop!("packageVersionStats");
 	do
 	{
 		auto cursor = db.find!("results",JobResult)(skip,24).array();
