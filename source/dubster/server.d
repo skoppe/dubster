@@ -118,6 +118,7 @@ template hasBsonId(T)
 }
 struct PackageVersionInfo
 {
+	string _id;
 	string name;
 	string ver;
 }
@@ -129,7 +130,7 @@ struct PackageVersionStats
 	int unknown;
 	this(DubPackage s, int success, int failed, int unknown)
 	{
-		pkg = PackageVersionInfo(s.name,s.ver);
+		pkg = PackageVersionInfo(s._id,s.name,s.ver);
 		this.success = success;
 		this.failed = failed;
 		this.unknown = unknown;
