@@ -19,13 +19,17 @@ module dubster.dmd;
 
 import std.regex;
 import std.conv : to, text;
-import std.algorithm : filter, cmp;
+import std.algorithm : filter, cmp, map;
 import std.range : isInputRange, ElementType, enumerate;
 import std.file : rename, exists;
 import std.traits : hasMember;
-import vibe.d;
+import vibe.http.common : HTTPMethod;
+import vibe.http.client : requestHTTP;
+import vibe.data.serialization : name;
+import vibe.data.json : deserializeJson;
 import dubster.docker;
 import std.digest.sha;
+import core.time : Duration;
 
 struct GitCommit
 {
@@ -275,5 +279,4 @@ string installCompiler(Sink)(DockerClient client, DmdVersion dmd, ref Sink sink)
 	sink.put("Dubster | Complete build DMD "~req.cmd[$-1]~"\n");
 	return "/gen/"~dmd.id;
 }
-
 

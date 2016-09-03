@@ -15,8 +15,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-import vibe.d;
-
 import dubster.docker;
 import dubster.worker;
 import dubster.server;
@@ -24,6 +22,12 @@ import dubster.reporter;
 import dubster.analyser;
 import std.stdio : writeln;
 import std.process : environment;
+import vibe.inet.url : URL;
+import vibe.core.core : runTask, runEventLoop;
+import vibe.web.rest : RestInterfaceClient;
+import vibe.http.server : HTTPServerSettings;
+import vibe.core.args : readOption, finalizeCommandLineOptions, printCommandLineHelp;
+import vibe.db.mongo.mongo : connectMongoDB;
 
 void main()
 {

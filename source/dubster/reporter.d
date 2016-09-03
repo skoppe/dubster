@@ -19,6 +19,7 @@ module dubster.reporter;
 
 import dubster.job;
 import dubster.server;
+import std.datetime : Clock;
 import std.stdio;
 
 alias Timestamp = long;

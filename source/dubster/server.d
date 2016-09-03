@@ -17,18 +17,31 @@
  */
 module dubster.server;
 
-import vibe.d;
 import dubster.job;
 import dubster.dmd;
 import dubster.dub;
 import dubster.reporter;
 import dubster.analyser;
 
+import vibe.data.json;
+import vibe.db.mongo.collection;
+import vibe.core.task;
+import vibe.http.server;
+import vibe.db.mongo.database;
+import vibe.web.common;
+import vibe.http.websockets;
+import vibe.http.router : URLRouter;
+import vibe.web.rest;
+import vibe.http.fileserver : serveStaticFiles;
+import vibe.core.log : logInfo;
+import vibe.core.core : setTimer;
+import vibe.core.concurrency;
 import std.stdio : writeln, writefln;
-import std.algorithm : setDifference, setIntersection, sort, uniq, cmp, copy, each;
+import std.algorithm : setDifference, setIntersection, sort, uniq, cmp, copy, each, map, filter, remove, countUntil;
 import std.range : chain;
-import std.array : array;
+import std.array : array, appender;
 import std.traits : hasMember;
+import core.time;
 
 struct JobRequest
 {
@@ -79,6 +92,8 @@ interface IDubsterApi
 	JobSetComparison getComparison(string _from, string _to);
 	@path("/packages")
 	PackageStats[] getPackages(PackageQueryParams query);
+	@path("/packages/:package")
+	PackageVersionStats[] getVersionedPackages(string _package, int skip = 0, int limit = 24);
 }
 struct ServerSettings
 {
@@ -438,6 +453,10 @@ class Server : IDubsterApi
 			return db.find!("packageStats",PackageStats)(query.skip,query.limit).array();
 		return db.find!("packageStats",PackageStats)(constraints,query.skip,query.limit).array();
 	}
+	PackageVersionStats[] getVersionedPackages(string _name, int skip = 0, int limit = 24)
+	{
+		return db.find!("packageVersionStats",PackageVersionStats)(["pkg.name":_name],skip,limit).array();
+	}
 	private void restore()
 	{
 		db.updateComputedData();
@@ -509,18 +528,7 @@ class Server : IDubsterApi
 	}
 	private DmdVersion createDmdVersion(JobSet js)
 	{
-		string pull;
-		final switch(js.trigger)
-		{
-			case JobTrigger.DmdRelease:
-			case JobTrigger.PackageUpdate:
-			case JobTrigger.Manual:
-			case JobTrigger.Nightly:
-				assert(false,"Can only create dmd version for pull requests");
-			case JobTrigger.DmdPullRequest: pull = "dmd"; break;
-			case JobTrigger.DruntimePullRequest: pull = "druntime"; break;
-			case JobTrigger.PhobosPullRequest: pull = "phobos"; break;
-		}
+		string pull = js.getPullRequestRepo();
 		string masterSha = getDmdMasterLatestSha();
 		string ver = masterSha~" + "~pull~"#"~js.triggerId;
 		assert(ver.isValidDiggerVersion());
@@ -530,8 +538,10 @@ class Server : IDubsterApi
 	{
 		assert(trigger == JobTrigger.DmdPullRequest || trigger == JobTrigger.DruntimePullRequest || trigger == JobTrigger.PhobosPullRequest);
 		auto js = JobSet(trigger, seq.to!string);
+		if (!js.doesPullRequestsExists)
+			throw new RestException(404, Json(["code":Json(1009),"msg":Json("Cannot find that pull request")]));
 		if (db.exists!"jobSets"(["_id":js.id]))
-			throw new RestException(404, Json(["code":Json(1008),"msg":Json("JobSet already exists")]));
+			throw new RestException(409, Json(["code":Json(1008),"msg":Json("JobSet already exists")]));
 		logInfo("Got %s",js);
 		auto dmd = createDmdVersion(js);
 		auto jobs = createJobs([dmd],knownPackages,js).array();

@@ -17,7 +17,7 @@
  */
 module dubster.job;
 
-import std.algorithm : countUntil, remove, sort;
+import std.algorithm : countUntil, remove, sort, map, cmp;
 import std.range : retro, empty, front, popFront;
 import std.datetime : Clock;
 import std.typecons : Nullable;
@@ -26,9 +26,11 @@ import dubster.dmd;
 import dubster.reporter;
 import dubster.analyser;
 import vibe.data.serialization : name;
+import vibe.http.common : HTTPMethod;
+import vibe.http.client : requestHTTP;
 import std.conv : to, text;
 import std.digest.sha;
-import std.array : appender;
+import std.array : appender, array;
 
 struct Job
 {
@@ -231,6 +233,52 @@ struct JobComparison
 {
 	JobResultSummary left;
 	JobResultSummary right;	
+}
+bool isPullRequest(JobSet js)
+{
+	final switch(js.trigger)
+	{
+		case JobTrigger.DmdRelease:
+		case JobTrigger.PackageUpdate:
+		case JobTrigger.Manual:
+		case JobTrigger.Nightly:
+			return false;
+		case JobTrigger.DmdPullRequest:
+		case JobTrigger.DruntimePullRequest:
+		case JobTrigger.PhobosPullRequest:
+			return true;
+	}
+}
+string getPullRequestRepo(JobSet js)
+{
+	final switch(js.trigger)
+	{
+		case JobTrigger.DmdRelease:
+		case JobTrigger.PackageUpdate:
+		case JobTrigger.Manual:
+		case JobTrigger.Nightly:
+			assert(false,"Can only create dmd version for pull requests");
+		case JobTrigger.DmdPullRequest: return "dmd";
+		case JobTrigger.DruntimePullRequest: return "druntime";
+		case JobTrigger.PhobosPullRequest: return "phobos";
+	}
+}
+bool doesPullRequestsExists(JobSet js)
+{
+	assert(js.isPullRequest);
+	string repo = js.getPullRequestRepo();
+	bool exists;
+	requestHTTP("/repos/dlang/"~repo~"/pulls/"~js.triggerId,(scope req){
+		req.method = HTTPMethod.GET;
+	},(scope res){
+		scope (exit) res.dropBody();
+		if (res.statusCode == 404)
+			exists = false;
+		else if (res.statusCode != 200)
+			throw new Exception("Invalid response");
+		exists = true;
+	});
+	return exists;	
 }
 JobComparison[] compareJobResultSets(JobResultSummary[] setA, JobResultSummary[] setB)
 {

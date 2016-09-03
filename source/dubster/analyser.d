@@ -18,7 +18,6 @@
 module dubster.analyser;
 
 import dubster.server;
-import vibe.d;
 
 import std.algorithm : partition, canFind, map, joiner;
 import std.conv : to, text;

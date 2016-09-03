@@ -17,7 +17,6 @@
  */
 module dubster.worker;
 
-import vibe.d;
 import dubster.server;
 import dubster.job;
 import dubster.dmd;
@@ -26,7 +25,14 @@ import dubster.docker;
 import dubster.reporter;
 import dubster.analyser;
 
+import vibe.data.json;
 import std.stdio : stdout;
+import std.typecons : Nullable;
+import core.time : seconds, minutes;
+import vibe.core.core : setTimer;
+import std.array : appender, Appender;
+import std.format : format;
+import vibe.web.rest : RestInterfaceClient;
 
 enum State
 {
