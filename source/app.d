@@ -59,6 +59,7 @@ ServerSettings createServerSettings(Settings settings)
 	auto sSettings = new HTTPServerSettings();
 	sSettings.port = 8080;
 	sSettings.maxRequestSize = 10 * 1024 * 1024;
+	sSettings.useCompressionIfPossible = true;
 	return ServerSettings(sSettings,settings.doSync);
 }
 struct Settings
