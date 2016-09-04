@@ -25,6 +25,7 @@
   "dependencies": {
     "can-use-dom": "^0.1.0",
     "immutable": "^3.8.1",
+    "in-view": "^0.2.0",
     "material-ui": "^0.15.4",
     "react": "^15.3.1",
     "react-dom": "^15.3.1",
@@ -35,7 +36,8 @@
     "react-tap-event-plugin": "^1.0.0",
     "redux": "^3.5.2",
     "redux-thunk": "^2.1.0",
-    "rx-lite-dom": "^7.0.3"
+    "rx-lite-dom": "^7.0.3",
+    "tiny-xhr": "^4.1.0"
   },
   "devDependencies": {
     "babel-core": "^6.13.2",

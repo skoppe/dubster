@@ -3,21 +3,10 @@ import {Link} from "react-router";
 import { connect } from 'react-redux'
 // import SnackbarQueue from './snackbar-queue.js';
 import storeShape from 'react-redux/lib/utils/storeShape'
-import {Card, CardActions, CardHeader, CardText} from 'material-ui/Card';
-import FlatButton from 'material-ui/FlatButton';
+import {Card, CardHeader, CardText} from 'material-ui/Card';
 import * as actions from '../actions.js';
-import PendingIcon from 'material-ui/svg-icons/action/watch-later';
-import BuildIcon from 'material-ui/svg-icons/action/build';
-import CompletedIcon from 'material-ui/svg-icons/action/done';
-import Badge from 'material-ui/Badge';
-import Immutable from 'immutable';
 import * as Icons from '../icons.js';
-import {
-  green700,red900
-} from 'material-ui/styles/colors';
 import CircularProgress from 'material-ui/CircularProgress';
-import SyntaxHighlighter from 'react-syntax-highlighter';
-import { tomorrowNight } from 'react-syntax-highlighter/dist/styles';
 import { Content } from './content.js'
 
 class JobSetCompare extends Component {

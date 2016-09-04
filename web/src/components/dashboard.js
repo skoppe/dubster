@@ -3,19 +3,10 @@ import {Link} from "react-router";
 import { connect } from 'react-redux'
 // import SnackbarQueue from './snackbar-queue.js';
 import storeShape from 'react-redux/lib/utils/storeShape'
-import {Card, CardActions, CardHeader, CardText} from 'material-ui/Card';
-import FlatButton from 'material-ui/FlatButton';
+import {Card, CardText, CardHeader} from 'material-ui/Card';
 import * as actions from '../actions.js';
-import PendingIcon from 'material-ui/svg-icons/action/watch-later';
-import BuildIcon from 'material-ui/svg-icons/action/build';
-import CompletedIcon from 'material-ui/svg-icons/action/done';
-import Badge from 'material-ui/Badge';
-import LinearProgress from 'material-ui/LinearProgress';
-import {
-  lightGreen600,deepOrange700,amber600
-
-} from 'material-ui/styles/colors';
 import CircularProgress from 'material-ui/CircularProgress';
+import { ProgressIndicator } from './progress.js'
 
 class Dashboard extends Component {
 	constructor(props,context)
@@ -37,10 +28,9 @@ class Dashboard extends Component {
 						let executingJobs = jobSet.get("executingJobs")
 						
 						let jobCount = jobSet.get("pendingJobs") + executingJobs + jobSet.get("completedJobs");
-						let greenSize = jobSet.get("success")*100 / jobCount
-						let redSize = jobSet.get("failed")*100 / jobCount
-						let graySize = 100 - greenSize - redSize
-						let yellowValue = (jobSet.get("unknown")*100 / jobCount) * 100 / graySize
+						let success = jobSet.get("success")
+						let failed = jobSet.get("failed")
+						let unknown = jobSet.get("unknown")
 						return (
 							<div key={jobSet.get("_id")} className="pure-u-1 pure-sm-1 pure-u-md-1-2 pure-u-lg-1-3 pure-u-xl-1-4">
 						      <Card>
@@ -55,9 +45,7 @@ class Dashboard extends Component {
 							    	}</CardHeader>
 								</Link>
 							    <CardText expandable={false}>
-							    	<LinearProgress mode="determinate" value={100} color={lightGreen600} style={{borderRadius:"0px",height:"8px",display:"inline-block",width:greenSize+"%"}}/>
-							    	<LinearProgress mode="determinate" value={100} color={deepOrange700} style={{borderRadius:"0px",height:"8px",display:"inline-block",width:redSize+"%"}}/>
-							    	<LinearProgress mode="determinate" value={yellowValue} color={amber600} style={{borderRadius:"0px",height:"8px",display:"inline-block",width:graySize+"%"}}/>
+									<ProgressIndicator total={jobCount} success={success} failed={failed} unknown={unknown}/>
 							    </CardText>
 							  </Card>
 							</div>

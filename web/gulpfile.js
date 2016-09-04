@@ -5,6 +5,7 @@ var WebpackDevServer = require("webpack-dev-server");
 var webpackDevConfig = require("./webpack-dev.js");
 var webpackProdConfig = require("./webpack-prod.js");
 var bundle = require('gulp-bundle-assets');
+var path = require("path");
 
 // The development server (the recommended option for development)
 gulp.task("default", ["webpack-dev-server", "less-watch"]);
@@ -53,7 +54,20 @@ gulp.task('less', function() {
 	return gulp.src('./styles-config.js')
 		.pipe(bundle())
 		.pipe(bundle.results({dest:'./',pathPrefix:'/'}))
-		.pipe(gulp.dest('../public/'));
+		.pipe(gulp.dest('../public/'))
+		.on('end',function(){
+			var fs = require("fs")
+			var bundles = JSON.parse(fs.readFileSync("./bundle.result.json"))
+			var name = bundles.styles.styles.match(/styles-[0-9a-zA-Z]+\.css/)[0]
+			var content = fs.readFileSync(
+			    path.join(__dirname, "../public", "index.html"),
+			    {encoding:"utf-8"}
+			).replace(/styles-[0-9a-zA-Z]+\.css/,name)
+			fs.writeFileSync(
+			    path.join(__dirname, "../public", "index.html"),
+			    content
+			)
+		})
 });
 
 gulp.task('less-watch', function()

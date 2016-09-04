@@ -1,4 +1,4 @@
-import Rx from 'rx-lite-dom';
+import xhr from 'tiny-xhr'
 
 export function buildUrl(url, query)
 {
@@ -15,14 +15,10 @@ let token = null;
 let host = "https://ghozadab.skoppe.nl"; //document ? document.location.origin : 'http://localhost:8080';
 function get(url, params)
 {
-	let cnf = 
-	{
-		method: 'GET',
-		responseType: "json",
-		cors: true,
-		url: buildUrl(host+'/api/v1'+url,params)
-	};
-	return Rx.DOM.ajax(cnf)
+	return xhr({
+		url: buildUrl(host+'/api/v1'+url,params),
+		method: 'GET'
+	})
 }
 export function searchJobsets(query)
 {
@@ -44,18 +40,19 @@ export function getJobSetCompare(frm,to)
 {
 	return get('/jobsets/'+frm+'/compare/'+to)
 }
+export function searchPackage(name)
+{
+	return get('/packages/'+name);
+}
+export function searchPackages(query)
+{
+	return get('/packages',{query: JSON.stringify(query)});
+}
+export function searchPackageVersions(name, skip, limit)
+{
+	return get('/packages/'+name+'/versions',{skip,limit});
+}
 export function dataFeed()
 {
-	let subject = new Rx.Subject();
-	var socket = new WebSocket("wss"+host.substring(host.indexOf("://"))+"/events")
-	socket.onmessage = function(message) {
-		subject.onNext(message)
-	}
-	socket.onclose = function() {
-		subject.onCompleted()
-	}
-	socket.onerror = function(err) {
-		subject.onError(err)
-	}
-	return subject;
+	return new WebSocket("wss"+host.substring(host.indexOf("://"))+"/events")
 }

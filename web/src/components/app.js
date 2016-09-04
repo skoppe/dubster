@@ -4,18 +4,10 @@ import { connect } from 'react-redux'
 import AppBar from 'material-ui/AppBar';
 import Drawer from 'material-ui/Drawer';
 import MenuItem from 'material-ui/MenuItem';
-// import SnackbarQueue from './snackbar-queue.js';
 import storeShape from 'react-redux/lib/utils/storeShape'
-import lightBaseTheme from 'material-ui/styles/baseThemes/lightBaseTheme';
 import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
 import theme from '../theme.js'
-import {Card, CardActions, CardHeader, CardText} from 'material-ui/Card';
-import FlatButton from 'material-ui/FlatButton';
 import * as actions from '../actions.js';
-import PendingIcon from 'material-ui/svg-icons/action/watch-later';
-import BuildIcon from 'material-ui/svg-icons/action/build';
-import CompletedIcon from 'material-ui/svg-icons/action/done';
-import Badge from 'material-ui/Badge';
 
 class App extends Component {
 	constructor(props,context)
@@ -38,8 +30,8 @@ class App extends Component {
 			<MuiThemeProvider muiTheme={theme}>
 				<div>
 					<Drawer docked={false} width={200} open={this.state.open} onRequestChange={open => this.setState({open})}>
-						<Link to="podcasts" style={{textDecoration:'none'}}><MenuItem onTouchTap={e=>this.handleClose(e)}>Search Podcasts</MenuItem></Link>
-						<Link to="playlists" style={{textDecoration:'none'}}><MenuItem onTouchTap={e=>this.handleClose(e)}>Manage Playlists</MenuItem></Link>
+						<Link to="/packages" style={{textDecoration:'none'}}><MenuItem onTouchTap={e=>this.handleClose(e)}>Packages</MenuItem></Link>
+						<Link to="/" style={{textDecoration:'none'}}><MenuItem onTouchTap={e=>this.handleClose(e)}>JobSets</MenuItem></Link>
 					</Drawer>
 					<AppBar	title="Dubster" onTitleTouchTap={_=>this.handleTouchTap()} iconClassNameRight="muidocs-icon-navigation-expand-more" onLeftIconButtonTouchTap={_=> this.setState({open:true})} />
 					{this.props.children}

@@ -21,7 +21,7 @@ module.exports = {
           }
         },
         maps: false,
-        rev: process.env.NODE_ENV == 'development'
+        rev: true
       }
     }
   }

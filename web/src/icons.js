@@ -1,6 +1,7 @@
 import {default as React, Component} from "react";
 import CheckCircle from 'material-ui/svg-icons/action/check-circle';
 import AlertError from 'material-ui/svg-icons/alert/error';
+import CompareArrows from 'material-ui/svg-icons/action/compare-arrows';
 import {lightGreen, deepOrange, amber} from './components/colors.js';
 
 console.log(lightGreen)
@@ -16,3 +17,5 @@ export const ErrorIcon = () => (
 export const WarningIcon = () => (
   <AlertError color={amber}/>
 )
+
+export const CompareIcon = CompareArrows

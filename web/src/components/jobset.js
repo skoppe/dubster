@@ -3,22 +3,12 @@ import {Link} from "react-router";
 import { connect } from 'react-redux'
 // import SnackbarQueue from './snackbar-queue.js';
 import storeShape from 'react-redux/lib/utils/storeShape'
-import {Card, CardActions, CardHeader, CardText} from 'material-ui/Card';
+import {Card, CardHeader, CardText} from 'material-ui/Card';
 import * as actions from '../actions.js';
-import PendingIcon from 'material-ui/svg-icons/action/watch-later';
-import BuildIcon from 'material-ui/svg-icons/action/build';
-import CompletedIcon from 'material-ui/svg-icons/action/done';
-import CompareIcon from 'material-ui/svg-icons/action/compare-arrows';
-import Badge from 'material-ui/Badge';
-import Immutable from 'immutable';
 import * as Icons from '../icons.js';
-import {
-  green700,red900
-} from 'material-ui/styles/colors';
 import { ProgressIndicator } from './progress.js'
 import CircularProgress from 'material-ui/CircularProgress';
 import { Content } from './content.js'
-import RaisedButton from 'material-ui/RaisedButton';
 import FlatButton from 'material-ui/FlatButton';
 import SelectJobSetModal from './select-jobset-modal.js';
 
@@ -39,6 +29,7 @@ class JobSet extends Component {
 
 		let item = jobSet.getIn(["jobset","item"])
 		let executingJobs = item.get("executingJobs")
+		let totalJobs = item.get("pendingJobs") + executingJobs + item.get("completedJobs");
 		return (
 			<div className="pure-g">
 				<div className="pure-u-1">
@@ -48,13 +39,13 @@ class JobSet extends Component {
 						}
 						<h1>{ jobSet.getIn(["jobset","item","trigger"]) }</h1>
 						<h3 style={{color:"gray"}}>{ jobSet.getIn(["jobset","item","triggerId"]) }</h3>
-						<ProgressIndicator pendingJobs={item.get("pendingJobs")} executingJobs={item.get("executingJobs")} completedJobs={item.get("completedJobs")} success={item.get("success")} failed={item.get("failed")} unknown={item.get("unknown")}/>
+						<ProgressIndicator total={totalJobs} success={item.get("success")} failed={item.get("failed")} unknown={item.get("unknown")}/>
 						<br/>
 						<FlatButton
 							label="Compare"
 							labelPosition="before"
 							primary={true}
-							icon={<CompareIcon />}
+							icon={<Icons.CompareIcon />}
 							onTouchTap={()=>this.setState({openCompare:true})}
 						/>
 					</Content>
