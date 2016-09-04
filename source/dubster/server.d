@@ -32,7 +32,7 @@ import vibe.web.common;
 import vibe.http.websockets;
 import vibe.http.router : URLRouter;
 import vibe.web.rest;
-import vibe.http.fileserver : serveStaticFiles, HTTPFileServerSettings;
+import vibe.http.fileserver : serveStaticFiles, HTTPFileServerSettings, serveStaticFile;
 import vibe.core.log : logInfo;
 import vibe.core.core : setTimer;
 import vibe.core.concurrency;
@@ -276,11 +276,15 @@ class Server : IDubsterApi
 		scheduler = new JobScheduler();
 		this.db = db;
 		auto fileSettings = new HTTPFileServerSettings();
-		fileSettings.maxAge = Duration.max;
+		fileSettings.maxAge = 31536000.seconds;
+		auto fileSettingsIndex = new HTTPFileServerSettings();
+		fileSettingsIndex.maxAge = 0.seconds;
 		auto router = new URLRouter;
 		router.registerRestInterface(this);
 		router.get("/events", handleWebSockets(&handleWebSocketConnection));
-		router.get("/*", serveStaticFiles("public/"));
+		router.get("/styles-*", serveStaticFiles("public/",fileSettings));
+		router.get("/bundle.*", serveStaticFiles("public/",fileSettings));
+		router.get("/*", serveStaticFile("public/index.html",fileSettingsIndex));
 		listenHTTP(s.httpSettings, router);
 
 		restore();
