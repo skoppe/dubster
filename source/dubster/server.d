@@ -42,6 +42,7 @@ import std.range : chain;
 import std.array : array, appender;
 import std.traits : hasMember;
 import core.time;
+import std.typecons : tuple;
 
 struct JobRequest
 {
@@ -261,6 +262,10 @@ class Persistence : EventDispatcher
 	bool exists(string name, Query)(Query q)
 	{
 		return !getCollection!(name).find(q).empty();
+	}
+	void ensureIndex(string name, Fields)(Fields f)
+	{
+		return getCollection!(name).ensureIndex(f);
 	}
 }
 class Server : IDubsterApi
@@ -498,9 +503,9 @@ class Server : IDubsterApi
 	}
 	PackageStats[] getPackages(PackageQueryParams query)
 	{
-		Bson[string] constraints;
+		Bson[Bson] constraints;
 		if (query.query.length > 0)
-			constraints["triggerId"] = Bson(["$regex": Bson(query.query)]);
+			constraints["$text"] = Bson["$search":Bson(query.query)];
 		if (constraints.length == 0)
 			return db.find!("packageStats",PackageStats)(query.skip,query.limit).array();
 		return db.find!("packageStats",PackageStats)(constraints,query.skip,query.limit).array();
@@ -530,6 +535,7 @@ class Server : IDubsterApi
 		knownDmds.sort();
 		knownPackages = db.readAll!("packages",DubPackage).array();
 		knownPackages.sort();
+		db.ensureIndex!("packageStats")([tuple!("pkg.name","text"),tuple!("pkg.description","text")])
 	}
 	private void processDmdReleases(DmdVersions)(DmdVersions latest)
 		if (is(ElementType!DmdVersions == DmdVersion))
