@@ -503,9 +503,13 @@ class Server : IDubsterApi
 	}
 	PackageStats[] getPackages(PackageQueryParams query)
 	{
-		Bson[Bson] constraints;
+		Bson[string] constraints;
 		if (query.query.length > 0)
-			constraints["$text"] = Bson["$search":Bson(query.query)];
+			constraints["$or"] = Bson(
+				["pkg.name":Bson(
+					["$regex":Bson(query.query)]
+				),"pkg.description":Bson(
+						["$regex":Bson(query.query)])]);
 		if (constraints.length == 0)
 			return db.find!("packageStats",PackageStats)(query.skip,query.limit).array();
 		return db.find!("packageStats",PackageStats)(constraints,query.skip,query.limit).array();
@@ -535,7 +539,7 @@ class Server : IDubsterApi
 		knownDmds.sort();
 		knownPackages = db.readAll!("packages",DubPackage).array();
 		knownPackages.sort();
-		db.ensureIndex!("packageStats")([tuple!("pkg.name","text"),tuple!("pkg.description","text")])
+		db.ensureIndex!("packageStats")([tuple("pkg.name",1),tuple("pkg.description",1)]);
 	}
 	private void processDmdReleases(DmdVersions)(DmdVersions latest)
 		if (is(ElementType!DmdVersions == DmdVersion))
