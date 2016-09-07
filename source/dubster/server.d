@@ -505,11 +505,7 @@ class Server : IDubsterApi
 	{
 		Bson[string] constraints;
 		if (query.query.length > 0)
-			constraints["$or"] = Bson(
-				["pkg.name":Bson(
-					["$regex":Bson(query.query)]
-				),"pkg.description":Bson(
-						["$regex":Bson(query.query)])]);
+			constraints["$or"] = Bson([Bson(["pkg.name":Bson(["$regex":Bson(query.query)])]),Bson(["pkg.description":Bson(["$regex":Bson(query.query)])])]);
 		if (constraints.length == 0)
 			return db.find!("packageStats",PackageStats)(query.skip,query.limit).array();
 		return db.find!("packageStats",PackageStats)(constraints,query.skip,query.limit).array();
