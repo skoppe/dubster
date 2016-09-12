@@ -43,6 +43,10 @@ struct GitTag
 	string tarball_url;
 	GitCommit commit;
 }
+struct BitbucketTag
+{
+	string name;
+}
 auto isValidDmdVersion(string ver)
 {
 	auto versionReg = ctRegex!`^v([0-9]+)\.([0-9]+)\.([0-9]+)(?:-(.+)([0-9]+))?$`;
@@ -94,7 +98,7 @@ unittest
 	assert(DmdVersion("master + Username/dmd/awesome-feature").id == "DC09B6E93C54499D72AA197B02FB62B7C4D9561F");
 	assert(DmdVersion("master + phobos#123").id == "327ADF40998E1B333184B885DCBAD1952166F7A6");
 }
-auto getDmdTags()
+auto getDmdGitHubTags()
 {
 	GitTag[] tags;
 	// we could also request ?page=2. look into the Link header
@@ -106,6 +110,20 @@ auto getDmdTags()
 		if (statusCode != 200)
 			throw new Exception("Invalid response");
 		tags = res.readJson.deserializeJson!(GitTag[]);
+	});
+	return tags;
+}
+auto getDmdDiggerTags()
+{
+	BitbucketTag[] tags;
+	requestHTTP("https://api.bitbucket.org/2.0/repositories/cybershadow/d/refs/tags?sort=-target.date",(scope req){
+		req.method = HTTPMethod.GET;
+	},(scope res){
+		scope (exit) res.dropBody();
+		int statusCode = res.statusCode;
+		if (statusCode != 200)
+			throw new Exception("Invalid response");
+		tags = res.readJson()["values"].deserializeJson!(BitbucketTag[]);
 	});
 	return tags;
 }
@@ -127,7 +145,7 @@ auto getDmdMasterLatestSha()
 	return items[0].sha;
 }
 auto toReleases(Tags)(Tags tags)
-	if (isInputRange!Tags && is(ElementType!(Tags) == GitTag))
+	if (isInputRange!Tags && hasMember!(ElementType!(Tags),"name"))
 {
 	return tags.map!(c=>DmdVersion(c.name));
 }
