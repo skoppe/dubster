@@ -656,7 +656,7 @@ void updatePackageStats(Persistence db, JobResult results)
 		else
 			db.update!(collection)([indexField:id],["$set":["unknown":(stats.front().unknown + 1)]]);
 	}
-	if (results.job.trigger != JobTrigger.DmdRelease)
+	if (!(results.job.trigger == JobTrigger.DmdRelease || results.job.trigger == JobTrigger.PackageUpdate))
 		return;
 	update!("packageStats",PackageStats)(results, results.job.pkg.name, "pkg.name");
 	update!("packageVersionStats",PackageVersionStats)(results, results.job.pkg._id, "pkg._id");
