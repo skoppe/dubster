@@ -60,7 +60,13 @@ struct PackageQueryParams
 {
 	@optional string query;
 	@optional int skip;
-	@optional int limit = 25;
+	@optional int limit = 24;
+}
+struct ReleaseQueryParams
+{
+	@optional string query;
+	@optional int skip;
+	@optional int limit = 24;	
 }
 struct JobResultsQueryParams
 {
@@ -107,6 +113,10 @@ interface IDubsterApi
 	PackageStats getPackage(string _package);
 	@path("/packages/:package/versions")
 	PackageVersionStats[] getVersionedPackages(string _package, int skip = 0, int limit = 24);
+	@path("/releases")
+	DmdReleaseStats[] getReleases(ReleaseQueryParams query);
+	@path("/releases/:release")
+	DmdPackageStats[] getReleasePackages(ReleaseQueryParams query, string _release);
 }
 struct ServerSettings
 {
@@ -156,6 +166,27 @@ struct PackageStats
 		this.unknown = unknown;
 	}
 }
+struct DmdReleaseStats
+{
+	DmdVersion dmd;
+	int success;
+	int failed;
+	int unknown;
+}
+struct DmdPackageStats
+{
+	Job job;
+	Timestamp start;
+	Timestamp finish;
+	ErrorStats error;
+	this(JobResult result)
+	{
+		job = result.job;
+		start = result.start;
+		finish = result.finish;
+		error = result.error;
+	}
+}
 struct EventMessage
 {
 	string collection;
@@ -196,7 +227,7 @@ class EventDispatcher
 }
 class Persistence : EventDispatcher
 {
-	private MongoCollection pendingJobs, executingJobs, dmds, packages, results, jobSets, packageStats, packageVersionStats;
+	private MongoCollection pendingJobs, executingJobs, dmds, packages, results, jobSets, packageStats, packageVersionStats, dmdReleaseStats, dmdPackageStats;
 	this(MongoDatabase db)
 	{
 		pendingJobs = db["pendingJobs"];
@@ -207,6 +238,8 @@ class Persistence : EventDispatcher
 		jobSets = db["jobSets"];
 		packageStats = db["packageStats"];
 		packageVersionStats = db["packageVersionStats"];
+		dmdReleaseStats = db["dmdReleaseStats"];
+		dmdPackageStats = db["dmdPackageStats"];
 	}
 	private auto getCollection(string name)()
 	{
@@ -521,6 +554,24 @@ class Server : IDubsterApi
 	{
 		return db.find!("packageVersionStats",PackageVersionStats)(["pkg.name":_name],skip,limit).array();
 	}
+	DmdReleaseStats[] getReleases(ReleaseQueryParams query)
+	{
+		Bson[string] constraints;
+		if (query.query.length > 0)
+			constraints["dmd.ver"] = ["$regex":Bson(query.query)];
+		if (constraints.length == 0)
+			return db.find!("dmdReleaseStats",DmdReleaseStats)(query.skip,query.limit).array();
+		return db.find!("dmdReleaseStats",DmdReleaseStats)(constraints,query.skip,query.limit).array();
+	}
+	DmdPackageStats[] getReleasePackages(ReleaseQueryParams query, string _release)
+	{
+		Bson[string] constraints = ["job.dmd.ver":Bson(_release)];
+		if (query.query.length > 0)
+			constraints["job.pkg.name"] = ["$regex":Bson(query.query)];
+		if (constraints.length == 0)
+			return db.find!("dmdPackageStats",DmdPackageStats)(query.skip,query.limit).array();
+		return db.find!("dmdPackageStats",DmdPackageStats)(constraints,query.skip,query.limit).array();
+	}
 	private void restore()
 	{
 		db.updateComputedData();
@@ -661,6 +712,30 @@ void updatePackageStats(Persistence db, JobResult results)
 	update!("packageStats",PackageStats)(results, results.job.pkg.name, "pkg.name");
 	update!("packageVersionStats",PackageVersionStats)(results, results.job.pkg._id, "pkg._id");
 }
+void updateDmdReleaseStats(Persistence db, JobResult results)
+{
+	void update(string collection, S)(JobResult result, string id)
+	{
+		auto stats = db.find!(collection,S)(["dmd._id":id]).limit(1);
+		if (stats.empty)
+		{
+			auto stat = S(result.job.dmd,results.error.isSuccess,results.error.isFailed,results.error.isUndefined);
+			db.append!(collection)(stat);
+		} else if (results.error.isSuccess)
+			db.update!(collection)(["dmd._id":id],["$set":["success":(stats.front().success + 1)]]);
+		else if (results.error.isFailed)
+			db.update!(collection)(["dmd._id":id],["$set":["failed":(stats.front().failed + 1)]]);
+		else
+			db.update!(collection)(["dmd._id":id],["$set":["unknown":(stats.front().unknown + 1)]]);
+	}
+	if (!(results.job.trigger == JobTrigger.DmdRelease || results.job.trigger == JobTrigger.PackageUpdate))
+		return;
+	update!("dmdReleaseStats",DmdReleaseStats)(results, results.job.pkg.name);
+}
+void updateDmdPackageStats(Persistence db, JobResult result)
+{
+	db.append!("dmdPackageStats")(DmdPackageStats(result));
+}
 void updateComputedData(Persistence db)
 {
 	logInfo("Updating Computed Data");
@@ -671,7 +746,11 @@ void updateComputedData(Persistence db)
 	{
 		auto cursor = db.find!("results",JobResult)(skip,24).array();
 		foreach(r; cursor)
+		{
 			db.updatePackageStats(r);
+			db.updateDmdReleaseStats(r);
+			db.updateDmdPackageStats(r);
+		}
 		if (cursor.length != 24)
 			break;
 		skip += 24;
