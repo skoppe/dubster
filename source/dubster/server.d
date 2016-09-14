@@ -730,7 +730,7 @@ void updateDmdReleaseStats(Persistence db, JobResult results)
 	}
 	if (!(results.job.trigger == JobTrigger.DmdRelease || results.job.trigger == JobTrigger.PackageUpdate))
 		return;
-	update!("dmdReleaseStats",DmdReleaseStats)(results, results.job.pkg.name);
+	update!("dmdReleaseStats",DmdReleaseStats)(results, results.job.dmd.id);
 }
 void updateDmdPackageStats(Persistence db, JobResult result)
 {
