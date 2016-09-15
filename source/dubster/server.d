@@ -742,6 +742,8 @@ void updateComputedData(Persistence db)
 	int skip = 0;
 	db.drop!("packageStats");
 	db.drop!("packageVersionStats");
+	db.drop!("dmdReleaseStats");
+	db.drop!("dmdPackageStats");
 	do
 	{
 		auto cursor = db.find!("results",JobResult)(skip,24).array();
