@@ -30,6 +30,7 @@ import vibe.data.json : deserializeJson;
 import dubster.docker;
 import std.digest.sha;
 import core.time : Duration;
+import std.functional : toDelegate;
 
 struct GitCommit
 {
@@ -113,10 +114,10 @@ auto getDmdGitHubTags()
 	});
 	return tags;
 }
-auto getDmdDiggerTags()
+auto getDmdDiggerTags(int page = 1)
 {
 	BitbucketTag[] tags;
-	requestHTTP("https://api.bitbucket.org/2.0/repositories/cybershadow/d/refs/tags?sort=-target.date",(scope req){
+	requestHTTP("https://api.bitbucket.org/2.0/repositories/cybershadow/d/refs/tags?sort=-target.date&page="~page.to!string,(scope req){
 		req.method = HTTPMethod.GET;
 	},(scope res){
 		scope (exit) res.dropBody();
@@ -272,6 +273,47 @@ unittest
 	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-rc1")].importantOnly.equal([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-rc1")]));
 	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-b1")].importantOnly.equal([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-b1")]));
 	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-b1"),DmdVersion("v2.060.2-rc1")].importantOnly.equal([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-rc1")]));
+}
+auto fetchDmdVersions(BitbucketTag[] delegate (int) fetchPage = toDelegate(&getDmdDiggerTags), Version oldest = Version(2,68,2))
+{
+	import std.array : appender;
+	import std.algorithm : countUntil, map, chunkBy, joiner, find, copy;
+	import std.range : front, take, drop;
+	auto app = appender!(BitbucketTag[]);
+	auto page = 1;
+	ptrdiff_t idx;
+	do {
+		auto tags = fetchPage(page++);
+		idx = tags.map!(t=>parseVersion(t.name)).countUntil!(v=>v<oldest);
+		tags.take(idx).copy(app);
+	} while (idx == -1);
+
+	auto output = appender!(DmdVersion[]);
+	auto versions = app.data;
+	
+	output.put(DmdVersion(versions.take(1).front.name));
+
+	auto chunks = versions.drop(1).map!(v=>parseVersion(v.name)).chunkBy!((a,b){
+		return a.major == b.major && a.minor == b.minor;
+	});
+
+	chunks.map!(chunk=>chunk.find!(c=>c.postfix.length==0).take(1).map!(v=>DmdVersion(v.toString))).joiner.copy(output);
+	return output.data;
+}
+unittest {
+	auto data = [
+		[BitbucketTag("v2.071.1-b4"),BitbucketTag("v2.071.1-b3")],
+		[BitbucketTag("v2.071.1-b2"),BitbucketTag("v2.071.0")],
+		[BitbucketTag("v2.070.1"),BitbucketTag("v2.070.0")],
+		[BitbucketTag("v2.069.2"),BitbucketTag("v2.069.1")],
+		[BitbucketTag("v2.068.2")]
+	];
+	auto fetch(int page)
+	{
+		return data[page-1];
+	}
+	import std.algorithm : equal;
+	assert(fetchDmdVersions(&fetch,Version(2,68,3)).equal([DmdVersion("v2.071.1-b4", "v2.071.1-b4"), DmdVersion("v2.071.0", "v2.071.0"), DmdVersion("v2.070.1", "v2.070.1"), DmdVersion("v2.069.2", "v2.069.2")]));
 }
 bool alreadyInstalled(string sha)
 {

@@ -679,7 +679,7 @@ class Server : IDubsterApi
 	{
 		try
 		{
-			auto latestDmds = getDmdDiggerTags.toReleases.importantOnly.array.sort().array();
+			auto latestDmds = fetchDmdVersions.array.sort().array();
 			auto latestPackages = parseCodeDlangOrg.sort();
 
 			processDubPackages(latestPackages);
