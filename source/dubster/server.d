@@ -32,10 +32,12 @@ import vibe.web.common;
 import vibe.http.websockets;
 import vibe.http.router : URLRouter;
 import vibe.web.rest;
+import vibe.web.web : registerWebInterface;
 import vibe.http.fileserver : serveStaticFiles, HTTPFileServerSettings, serveStaticFile;
 import vibe.core.log : logInfo;
 import vibe.core.core : setTimer;
 import vibe.core.concurrency;
+import vibe.textfilter.urlencode : urlEncode;
 import std.stdio : writeln, writefln;
 import std.algorithm : setDifference, setIntersection, sort, uniq, cmp, copy, each, map, filter, remove, countUntil;
 import std.range : chain;
@@ -301,6 +303,43 @@ class Persistence : EventDispatcher
 		return getCollection!(name).ensureIndex(f);
 	}
 }
+class BadgeService
+{
+	Persistence db;
+	this(Persistence db)
+	{
+		this.db = db;
+	}
+	@path("/badge/:package/version/:version/:dmd")
+	void getBadge(string _package, string _version, string _dmd, HTTPServerResponse res)
+	{
+		string id = _package ~ ":" ~ _version;
+		auto stats = db.find!("dmdPackageStats",DmdPackageStats)(["job.pkg._id":id,"job.dmd.ver":_dmd]);
+		if (stats.empty)
+			throw new HTTPStatusException(404);
+		auto result = stats.front();
+		string text, color;
+		if (result.error.isSuccess())
+		{
+			color = "green";
+			text = "success";
+		} else if (result.error.isFailed())
+		{
+			color = "red";
+			text = "failed";
+		} else
+		{
+			color = "lightgray";
+			text = "n/a";
+		}
+		auto encode(string input)
+		{
+			import std.array : replace;
+			return urlEncode(input).replace("-","--");
+		}
+		res.redirect("https://img.shields.io/badge/"~encode(_dmd)~"-"~encode(text)~"-"~encode(color)~".svg",301);
+	}
+}
 class Server : IDubsterApi
 {
 	DmdVersion[] knownDmds;
@@ -318,7 +357,8 @@ class Server : IDubsterApi
 		auto fileSettingsIndex = new HTTPFileServerSettings();
 		fileSettingsIndex.maxAge = 0.seconds;
 		auto router = new URLRouter;
-		router.registerRestInterface(this);
+		auto badgeInterface = new BadgeService(db);
+		router.registerRestInterface(this).registerWebInterface(badgeInterface);
 		router.get("/events", handleWebSockets(&handleWebSocketConnection));
 		router.get("/styles-*", serveStaticFiles("public/",fileSettings));
 		router.get("/bundle.*", serveStaticFiles("public/",fileSettings));
