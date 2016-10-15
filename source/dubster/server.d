@@ -22,6 +22,7 @@ import dubster.dmd;
 import dubster.dub;
 import dubster.reporter;
 import dubster.analyser;
+import dubster.persistence;
 
 import vibe.data.json;
 import vibe.db.mongo.collection;
@@ -35,22 +36,18 @@ import vibe.web.rest;
 import vibe.web.web : registerWebInterface;
 import vibe.http.fileserver : serveStaticFiles, HTTPFileServerSettings, serveStaticFile;
 import vibe.core.log : logInfo;
-import vibe.core.core : setTimer;
+import vibe.core.core : setTimer, sleep;
 import vibe.core.concurrency;
 import vibe.textfilter.urlencode : urlEncode;
 import std.stdio : writeln, writefln;
-import std.algorithm : setDifference, setIntersection, sort, uniq, cmp, copy, each, map, filter, remove, countUntil;
+import std.algorithm : setDifference, setIntersection, sort, uniq, cmp, copy, each, map, filter, remove, countUntil, partition, count;
 import std.range : chain;
 import std.array : array, appender;
 import std.traits : hasMember;
 import core.time;
-import std.typecons : tuple;
+import std.typecons : tuple, Nullable;
+import std.datetime : Clock, UTC, SysTime;
 
-struct JobRequest
-{
-	string dmd;
-	string pkg;
-}
 struct JobSetQueryParams
 {
 	@optional string query;
@@ -89,8 +86,6 @@ interface IDubsterApi
 {
 	@path("/worker/job")
 	Json getJob();
-	@path("/worker/job")
-	void postJob(JobRequest job);
 	@path("/worker/results")
 	void postJobResult(JobResult results);
 	@path("/results")
@@ -134,6 +129,7 @@ struct PackageVersionInfo
 	string _id;
 	string name;
 	string ver;
+	SysTime datetime;
 }
 struct PackageVersionStats
 {
@@ -143,7 +139,7 @@ struct PackageVersionStats
 	int unknown;
 	this(DubPackage s, int success, int failed, int unknown)
 	{
-		pkg = PackageVersionInfo(s._id,s.name,s.ver);
+		pkg = PackageVersionInfo(s._id,s.name,s.ver,s.datetime);
 		this.success = success;
 		this.failed = failed;
 		this.unknown = unknown;
@@ -187,120 +183,6 @@ struct DmdPackageStats
 		start = result.start;
 		finish = result.finish;
 		error = result.error;
-	}
-}
-struct EventMessage
-{
-	string collection;
-	string type;
-	Json data;
-}
-class EventDispatcher
-{
-	private Task[] subscribers;
-	void subscribe(Task t)
-	{
-		subscribers ~= t;
-	}
-	void unsubscribe(Task t)
-	{
-		auto idx = subscribers.countUntil!(i=>i==t);
-		if (idx == -1)
-			return;
-		subscribers.remove(idx);
-		subscribers = subscribers[0..$-1];
-	}
-	private void dispatch(EventMessage msg)
-	{
-		Task[] failedSends;
-		foreach (s; subscribers)
-			try s.send(msg); catch(Exception e) { failedSends ~= s; }
-		foreach (t; failedSends)
-			unsubscribe(t);
-	}
-	private void dispatch(string name)(string type)
-	{
-		dispatch(EventMessage(name,type,Json()));
-	}
-	private void dispatch(string name, T)(string type, T t)
-	{
-		dispatch(EventMessage(name,type,t.serializeToJson()));
-	}
-}
-class Persistence : EventDispatcher
-{
-	private MongoCollection pendingJobs, executingJobs, dmds, packages, results, jobSets, packageStats, packageVersionStats, dmdReleaseStats, dmdPackageStats;
-	this(MongoDatabase db)
-	{
-		pendingJobs = db["pendingJobs"];
-		executingJobs = db["executingJobs"];
-		dmds = db["dmds"];
-		packages = db["packages"];
-		results = db["results"];
-		jobSets = db["jobSets"];
-		packageStats = db["packageStats"];
-		packageVersionStats = db["packageVersionStats"];
-		dmdReleaseStats = db["dmdReleaseStats"];
-		dmdPackageStats = db["dmdPackageStats"];
-	}
-	private auto getCollection(string name)()
-	{
-		static assert(
-			hasMember!(Persistence,name) &&
-			is(typeof(__traits(getMember, this, name)) : MongoCollection),
-			"collection "~name~" doesn't exist");
-		return __traits(getMember, this, name);
-	}
-	void append(string name, T)(T t)
-	{
-		static assert(hasBsonId!T);
-		getCollection!(name).insert(t);
-		dispatch!(name)("append",t);
-	}
-	auto readAll(string name, T)()
-	{
-		static assert(hasBsonId!T);
-		return getCollection!(name).find!T();
-	}
-	void remove(string name, T)(T t)
-	{
-		static assert(hasBsonId!T);
-		getCollection!(name).remove(t);
-		dispatch!(name)("remove",t);
-	}
-	void drop(string name)()
-	{
-		getCollection!(name).remove();
-		dispatch!(name)("remove");
-	}
-	void update(string name, Selector, Updates)(Selector s, Updates u)
-	{
-		getCollection!(name).update(s,u);
-		struct Update
-		{
-			Selector selector;
-			Updates updates;
-		}
-		dispatch!(name)("update",Update(s,u));
-	}
-	auto find(string name, T, Query)(Query q, int skip = 0, int limit = 0)
-	{
-		return getCollection!(name).find!(T,Query)(q,null,QueryFlags.None).skip(skip).limit(limit);
-	}
-	auto find(string name, T)(int skip = 0, int limit = 0)
-	{
-		auto cursor = getCollection!(name).find!(T).skip(skip);
-		if (limit == 0)
-			return cursor;
-		return cursor.limit(limit);
-	}
-	bool exists(string name, Query)(Query q)
-	{
-		return !getCollection!(name).find(q).empty();
-	}
-	void ensureIndex(string name, Fields)(Fields f)
-	{
-		return getCollection!(name).ensureIndex(f);
 	}
 }
 class BadgeService
@@ -350,8 +232,8 @@ class Server : IDubsterApi
 	this(ServerSettings s, Persistence db, IReporter reporter)
 	{
 		settings = s;
-		scheduler = new JobScheduler();
 		this.db = db;
+		scheduler = new JobScheduler();
 		auto fileSettings = new HTTPFileServerSettings();
 		fileSettings.maxAge = 31536000.seconds;
 		auto fileSettingsIndex = new HTTPFileServerSettings();
@@ -421,6 +303,8 @@ class Server : IDubsterApi
 	}
 	void postJobResult(JobResult results)
 	{
+		auto raw = results.getRawJobResult();
+		db.append!("rawJobResults")([raw]);
 		db.append!("results")([results]);
 		db.remove!("executingJobs")(results.job);
 		auto js = scheduler.getJobSet(results.job.jobSet);
@@ -442,9 +326,9 @@ class Server : IDubsterApi
 			scheduler.updateJobSet(js);
 			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["executingJobs":Bson(js.executingJobs),"completedJobs":Bson(js.completedJobs),"success":Bson(js.success),"failed":Bson(js.failed),"unknown":Bson(js.unknown)]]);
 		}
-		db.updatePackageStats(results);
+		db.updateStats(results);
 	}
-	void postJob(JobRequest job)
+	/*void postJob(JobRequest job)
 	{
 		auto js = JobSet(JobTrigger.Manual, "dmd: "~job.dmd~", pkg: "~job.pkg);
 		// todo: see if jobset already exists, if it does, continue
@@ -484,7 +368,7 @@ class Server : IDubsterApi
 				throw new RestException(400, Json(["code":Json(1002),"msg":Json("Skipped: resulted in zero jobs.")]));
 			addJobs(jobs,js);
 		}
-	}
+	}*/
 	JobResult[] getJobResults(JobResultsQueryParams query)
 	{
 		Bson[string] constraints;
@@ -666,23 +550,31 @@ class Server : IDubsterApi
 		if (newPackages.length == 0 && samePackages.length == knownPackages.length)
 			return;
 
+		auto processedPackages = appender!(DubPackage[]);
 		foreach(pkg; newPackages)
 		{
-			auto js = JobSet(JobTrigger.PackageUpdate,pkg.name~":"~pkg.ver);
-			if (db.exists!"jobSets"(["_id":js.id]))
-				continue;
-			auto jobs = createJobs(knownDmds,[pkg],js).array();
-			if (jobs.length == 0)
-				continue;
-			addJobs(jobs,js);
+			try
+			{
+				pkg.extendDubPackageWithInfo();
+				auto js = JobSet(JobTrigger.PackageUpdate,pkg.name~":"~pkg.ver);
+				if (db.exists!"jobSets"(["_id":js.id]))
+					continue;
+				auto jobs = createJobs(knownDmds,[pkg],js).array();
+				if (jobs.length == 0)
+					continue;
+				db.append!"packages"([pkg]);
+				addJobs(jobs,js);
+				processedPackages.put(pkg);
+			} catch (Exception e)
+			{
+			}
+			sleep(50.msecs);
 		}
 		auto oldPackages = knownPackages.setDifference(latest).array();
-		knownPackages = chain(newPackages,samePackages).array();
+		knownPackages = chain(processedPackages.data,samePackages).array();
 		knownPackages.sort();
 		if (oldPackages.length > 0)
 			db.remove!"packages"(oldPackages);
-		if (newPackages.length > 0)
-			db.append!"packages"(newPackages);
 	}
 	private DmdVersion createDmdVersion(JobSet js)
 	{
@@ -690,7 +582,7 @@ class Server : IDubsterApi
 		string masterSha = getDmdMasterLatestSha();
 		string ver = masterSha~" + "~pull~"#"~js.triggerId;
 		assert(ver.isValidDiggerVersion());
-		return DmdVersion(ver);
+		return DmdVersion(ver,Clock.currTime(UTC()).toISOExtString());
 	}
 	private void processPullRequest(JobTrigger trigger, uint seq)
 	{
@@ -709,18 +601,42 @@ class Server : IDubsterApi
 	}
 	private void addJobs(Job[] jobs, JobSet js)
 	{
-		js.pendingJobs = jobs.length;
-		db.append!"pendingJobs"(jobs);
+		auto findRawJobResult(Job job){
+			auto cursor = db.find!("rawJobResults",RawJobResult)(["_id":job.id]);
+			if (cursor.empty)
+				return Nullable!(RawJobResult)();
+			return Nullable!(RawJobResult)(cursor.front);
+		}
+		auto jobsWithResults = jobs
+			.map!(job=>tuple!("job","result")(job,findRawJobResult(job)))
+			.array();
+		auto cachedJobs = jobsWithResults.partition!(t=>t.result.isNull);
+		auto newJobs = jobsWithResults[0..$-cachedJobs.length].map!(t=>t.job).array();
+
+		auto results = cachedJobs.map!((t){
+			t.job.created = t.result.created;
+			return JobResult(t.job,t.result.start,t.result.finish,t.result.output,t.result.output.parseError);
+		}).array();
+
+		db.append!("results")([results]);
+		js.success = cast(int)results.count!(r=>r.error.isSuccess);
+		js.failed = cast(int)results.count!(r=>r.error.isFailed);
+		js.unknown = cast(int)results.count!(r=>r.error.isUndefined);
+		js.completedJobs = results.length;
+		js.pendingJobs = newJobs.length;
+		db.append!"pendingJobs"(newJobs);
 		db.append!"jobSets"([js]);
-		scheduler.addJobs(jobs,js);
-		logInfo("Created %s new jobs triggered by %s",jobs.length,js);
+		foreach(result; results)
+			db.updateStats(result);
+		scheduler.addJobs(newJobs,js);
+		logInfo("Created %s new jobs triggered by %s, (%s were cached)",jobs.length,js,results.length);
 	}
 	private void sync()
 	{
 		try
 		{
 			auto latestDmds = fetchDmdVersions.array.sort().array();
-			auto latestPackages = parseCodeDlangOrg.sort();
+			auto latestPackages = fetchDubPackages.sort();
 
 			processDubPackages(latestPackages);
 			processDmdReleases(latestDmds);
@@ -730,6 +646,12 @@ class Server : IDubsterApi
 		}
 		setTimer(5.minutes, &this.sync, false);
 	}
+}
+void updateStats(Persistence db, JobResult results)
+{
+	db.updatePackageStats(results);
+	db.updateDmdReleaseStats(results);
+	db.updateDmdPackageStats(results);
 }
 void updatePackageStats(Persistence db, JobResult results)
 {
@@ -774,6 +696,8 @@ void updateDmdReleaseStats(Persistence db, JobResult results)
 }
 void updateDmdPackageStats(Persistence db, JobResult result)
 {
+	if (!(result.job.trigger == JobTrigger.DmdRelease || result.job.trigger == JobTrigger.PackageUpdate))
+		return;
 	db.append!("dmdPackageStats")(DmdPackageStats(result));
 }
 void updateComputedData(Persistence db)
@@ -788,11 +712,7 @@ void updateComputedData(Persistence db)
 	{
 		auto cursor = db.find!("results",JobResult)(skip,24).array();
 		foreach(r; cursor)
-		{
-			db.updatePackageStats(r);
-			db.updateDmdReleaseStats(r);
-			db.updateDmdPackageStats(r);
-		}
+			db.updateStats(r);
 		if (cursor.length != 24)
 			break;
 		skip += 24;

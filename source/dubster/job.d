@@ -40,14 +40,29 @@ struct Job
 	string jobSet;
 	JobTrigger trigger;
 	string triggerId;
+	Timestamp created;
 }
 struct JobResult
 {
 	Job job;
 	Timestamp start;
 	Timestamp finish;
-	string output;
+	string output;	// TODO: We can drop this since it is already stored in the RawJobResults table
 	ErrorStats error;
+}
+struct RawJobResult
+{
+	@name("_id") string jobId;
+	string dmdId;
+	string pkgId;
+	string output;
+	Timestamp start;
+	Timestamp finish;
+	Timestamp created;
+}
+auto getRawJobResult(JobResult r)
+{
+	return RawJobResult(r.job.id,r.job.dmd.id,r.job.pkg._id,r.output,r.start,r.finish,r.job.created);
 }
 enum JobTrigger:string
 {
@@ -191,7 +206,7 @@ unittest
 {
 	auto s = new JobScheduler();
 	auto js = JobSet(JobTrigger.DmdRelease,"v2.071.1");
-	auto dmds = [DmdVersion("v2.071.1")];
+	auto dmds = [DmdVersion("v2.071.1","2012-12-12T08:33:12Z")];
 	auto packages = [DubPackage("abc","0.1.1")];
 	auto jobs = createJobs(dmds,packages,js).array();
 	js.pendingJobs = jobs.length;
@@ -213,7 +228,7 @@ auto createJobs(DmdVersions,DubPackages)(DmdVersions dmds, DubPackages packages,
 	import std.algorithm : cartesianProduct;
 	return dmds.cartesianProduct(packages).map!((t){
 		auto sha = sha1Of(t[0].id ~ t[1]._id).toHexString().text;
-		return Job(sha,t[0],t[1],js.id,js.trigger,js.triggerId);
+		return Job(sha,t[0],t[1],js.id,js.trigger,js.triggerId,getTimestamp());
 	});
 }
 struct JobSummary
@@ -313,7 +328,7 @@ JobComparison[] compareJobResultSets(JobResultSummary[] setA, JobResultSummary[]
 @("compareJobResultSets")
 unittest
 {
-	auto dmd = DmdVersion("v2.061.1");
+	auto dmd = DmdVersion("v2.061.1","2012-12-12T08:33:12Z");
 	auto pkgs = [DubPackage("abc","1.0.0"),DubPackage("def","1.0.0")];
 	auto jobSummaries = pkgs.map!(p=>JobSummary("",dmd,p)).array();
 	auto noError = ErrorStats(ErrorType.None);

@@ -20,6 +20,8 @@ import dubster.worker;
 import dubster.server;
 import dubster.reporter;
 import dubster.analyser;
+import dubster.persistence;
+
 import std.stdio : writeln;
 import std.process : environment;
 import vibe.inet.url : URL;
@@ -41,7 +43,18 @@ void main()
 		if (settings.worker)
 			new Worker(settings.createWorkerSettings);
 		else if (settings.server)
-			new Server(settings.createServerSettings, new Persistence(connectMongoDB(settings.mongoHost).getDatabase(settings.mongoDb)), new Reporter());
+		{
+			auto db = new Persistence(connectMongoDB(settings.mongoHost).getDatabase(settings.mongoDb));
+			auto migrator = db.migrator();
+
+			if (migrator.needsMigration)
+			{
+				if (!settings.allowMigration)
+					throw new Exception("System needs migration but program not started with --migration flag. Please ***backup db*** and rerun with --migration flag.");
+				migrator.migrate();
+			}
+			new Server(settings.createServerSettings, db, new Reporter());
+		}
 	});
 
 	runEventLoop();
@@ -68,6 +81,7 @@ struct Settings
 	bool server = false;
 	bool analyser = false;
 	bool doSync = true;
+	bool allowMigration = false;
 	URL serverHost;
 	long memoryLimit;
 	string mongoHost, mongoUser, mongoPass, mongoDb;
@@ -93,6 +107,7 @@ Settings readSettings()
 		readOption("mongoPass",&settings.mongoPass,"MongoDB pass");
 		readOption("mongoDb",&settings.mongoPass,"MongoDB Database name (default dubster)");
 		readOption("sync",&settings.doSync,"Sync known dmd releases from github and packages from code.dlang.org and create build jobs for them (default: true)");
+		readOption("migrate",&settings.allowMigration,"Allow db migrations");
 	}
 	return settings;
 }

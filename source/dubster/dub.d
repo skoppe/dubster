@@ -26,6 +26,8 @@ import std.range : zip;
 import std.array : array;
 import std.algorithm : map, filter;
 import dubster.docker;
+import dubster.reporter;
+import std.datetime : SysTime;
 
 struct DubPackage
 {
@@ -33,12 +35,16 @@ struct DubPackage
 	string name;
 	string ver;
 	string description;
-	this(string n, string v, string d = "")
+	SysTime datetime;
+	string commit;
+	this(string n, string v, string d = "", string datetime = "2012-12-21T21:12:21Z", string commit = "hash")
 	{
 		name = n;
 		ver = v;
 		description = d;
 		_id = name~":"~ver;
+		this.datetime = SysTime.fromISOExtString(datetime).toUTC();
+		this.commit = commit;
 	}
 	int opCmp(inout const DubPackage other)
 	{
@@ -70,7 +76,7 @@ unittest
 	assert(getDiff([abc100],[abc009]).equal([abc100]));
 	assert(getDiff([abc100,abc009],[abc100,abc100]).equal([abc009]));
 }
-auto parseCodeDlangOrg()
+auto fetchDubPackages()
 {
 	struct Package
 	{
@@ -83,10 +89,28 @@ auto parseCodeDlangOrg()
 		(scope req){
 		},
 		(scope res){
-			packages = res.readJson.deserializeJson!(Package[]).map!(p=>DubPackage(p.name,p.ver,p.description)).array;
+			packages = res.readJson.deserializeJson!(Package[]).map!(p => DubPackage(p.name,p.ver,p.description)).array;
 		}
 	);
 	return packages;
+}
+void extendDubPackageWithInfo(ref DubPackage p)
+{
+	struct PackageInfo
+	{
+		string date;
+		string commitID;
+	}
+	PackageInfo pkg;
+	requestHTTP("https://code.dlang.org/api/packages/"~p.name~"/"~p.ver~"/info",
+		(scope req){
+		},
+		(scope res){
+			pkg = res.readJson.deserializeJson!(PackageInfo);
+		}
+	);
+	p.datetime = SysTime.fromISOExtString(pkg.date).toUTC();
+	p.commit = pkg.commitID;
 }
 auto buildPackage(Sink)(DockerClient client, DubPackage pkg, ref Sink sink, string compilerPath, long memoryLimit)
 {

@@ -31,22 +31,17 @@ import dubster.docker;
 import std.digest.sha;
 import core.time : Duration;
 import std.functional : toDelegate;
+import std.datetime : SysTime;
 
-struct GitCommit
+struct BitbucketTagTarget
 {
-	string sha;
-	string url;
-}
-struct GitTag
-{
-	string name;
-	string zipball_url;
-	string tarball_url;
-	GitCommit commit;
+	string commit;
+	string date;
 }
 struct BitbucketTag
 {
 	string name;
+	BitbucketTagTarget target;
 }
 auto isValidDmdVersion(string ver)
 {
@@ -64,8 +59,16 @@ struct DmdVersion
 {
 	@name("_id") string id;
 	string ver;
-	this(string v, string i = null)
+	string commit;
+	SysTime datetime;
+	this(BitbucketTag tag)
 	{
+		this(tag.name,tag.target.date);
+		commit = tag.target.commit;	
+	}
+	this(string v, string d, string i = null)
+	{
+		datetime = SysTime.fromISOExtString(d).toUTC();
 		ver = v;
 		if (i is null)
 		{
@@ -84,35 +87,20 @@ struct DmdVersion
 @("isValidDiggerVersion")
 unittest
 {
-	assert(DmdVersion("v2.061.1-b2").isValidDiggerVersion);
-	assert(DmdVersion("master + dmd#123").isValidDiggerVersion);
-	assert(DmdVersion("master + phobos#123").isValidDiggerVersion);
-	assert(DmdVersion("master + druntime#123").isValidDiggerVersion);
-	assert(DmdVersion("master + Username/dmd/awesome-feature").isValidDiggerVersion);
-	assert(!DmdVersion("master+ druntime#123").isValidDiggerVersion);
-	assert(!DmdVersion("master+druntime#123").isValidDiggerVersion);
+	assert(DmdVersion("v2.061.1-b2","2012-12-12T08:11:34Z").isValidDiggerVersion);
+	assert(DmdVersion("master + dmd#123","2012-12-12T08:11:34.003Z").isValidDiggerVersion);
+	assert(DmdVersion("master + phobos#123","2012-12-12T08:11:34+02:00").isValidDiggerVersion);
+	assert(DmdVersion("master + druntime#123","2012-12-12T08:11:34.003+02:00").isValidDiggerVersion);
+	assert(DmdVersion("master + Username/dmd/awesome-feature","2012-12-12T08:11:34Z").isValidDiggerVersion);
+	assert(!DmdVersion("master+ druntime#123","2012-12-12T08:11:34Z").isValidDiggerVersion);
+	assert(!DmdVersion("master+druntime#123","2012-12-12T08:11:34Z").isValidDiggerVersion);
 }
 @("DmdVersion")
 unittest
 {
-	assert(DmdVersion("v2.061.1-b2").id == "v2.061.1-b2");
-	assert(DmdVersion("master + Username/dmd/awesome-feature").id == "DC09B6E93C54499D72AA197B02FB62B7C4D9561F");
-	assert(DmdVersion("master + phobos#123").id == "327ADF40998E1B333184B885DCBAD1952166F7A6");
-}
-auto getDmdGitHubTags()
-{
-	GitTag[] tags;
-	// we could also request ?page=2. look into the Link header
-	requestHTTP("https://api.github.com/repos/dlang/dmd/tags",(scope req){
-		req.method = HTTPMethod.GET;
-	},(scope res){
-		scope (exit) res.dropBody();
-		int statusCode = res.statusCode;
-		if (statusCode != 200)
-			throw new Exception("Invalid response");
-		tags = res.readJson.deserializeJson!(GitTag[]);
-	});
-	return tags;
+	assert(DmdVersion("v2.061.1-b2","2012-12-12T08:11:34Z").id == "v2.061.1-b2");
+	assert(DmdVersion("master + Username/dmd/awesome-feature","2012-12-12T08:11:34Z").id == "DC09B6E93C54499D72AA197B02FB62B7C4D9561F");
+	assert(DmdVersion("master + phobos#123","2012-12-12T08:11:34Z").id == "327ADF40998E1B333184B885DCBAD1952166F7A6");
 }
 auto getDmdDiggerTags(int page = 1)
 {
@@ -144,11 +132,6 @@ auto getDmdMasterLatestSha()
 		items = res.readJson.deserializeJson!(Item[]);
 	});
 	return items[0].sha;
-}
-auto toReleases(Tags)(Tags tags)
-	if (isInputRange!Tags && hasMember!(ElementType!(Tags),"name"))
-{
-	return tags.map!(c=>DmdVersion(c.name));
 }
 struct Version
 {
@@ -195,6 +178,30 @@ struct Version
 		return format("v%d.%03d.%d",major,minor,patch);
 	}
 }
+uint getSortableVersion(Version v)
+{
+	uint packed =
+		(v.major & 63) << (26) | // 6 bits
+		(v.minor & 8191) << (13) | // 13 bits
+		(v.postfix.length == 0) << (12) | // 1 bit
+		(v.patch & 31) << (7) | // 5 bits
+		(v.postfix == "rc" ? 3 : v.postfix == "b" ? 2 : 0) << (5) | // 2 bits
+		(v.seq & 31); // 5 bits
+	return packed;
+}
+uint getSortableVersion(string v)
+{
+	return v.parseVersion.getSortableVersion;
+}
+unittest {
+	assert(Version(1,1,1).getSortableVersion() == 67121280);
+	assert(Version(2,2,2).getSortableVersion() == 134238464);
+	assert(Version(2,71,1,"b",4).getSortableVersion() == 134799556);
+	assert(Version(2,71,1,"b",5).getSortableVersion() == 134799557);
+	assert(Version(2,71,1,"rc",4).getSortableVersion() == 134799588);
+	assert(Version(2,71,1,"rc",5).getSortableVersion() == 134799589);
+	assert(Version(2,71,1).getSortableVersion() == 134803584);
+}
 Version parseVersion(string v)
 {
 	auto reg = ctRegex!`^v([0-9]+)\.([0-9]+)\.([0-9]+)(?:-(.+)([0-9]+))?$`;
@@ -233,52 +240,12 @@ unittest
 	assert(parseVersion("v2.071.1-rc3") < parseVersion("v2.071.2"));
 	assert(parseVersion("v2.071.1-b2") < parseVersion("v2.071.2"));
 }
-/** drops patches, release-candidates and beta's whenever they are followed by a newer patch */
-auto importantOnly(Releases)(Releases releases)
-	if (isInputRange!Releases && is(ElementType!(Releases) == DmdVersion))
-{
-	// todo: can probably be done easier with sliding window and a filter
-	import std.algorithm : sort, chunkBy, map, joiner, find, uniq;
-	import std.range : tail, front, take, chain, drop, retro;
-	import std.array : array;
-
-	auto versions = releases.map!(v=>parseVersion(v.ver)).array().sort();
-	auto grouped = versions.chunkBy!((a,b){
-		return a.major == b.major && a.minor == b.minor;
-	}).array();
-	auto head = grouped.take(grouped.length-1);
-	auto last = grouped.tail(1);
-
-	auto preLast = last.map!((g){
-		return chain(
-			g.array().retro.find!(a=>a.postfix.length == 0).take(1),
-			g.tail(1)
-		).uniq;
-	}).joiner;
-
-	return chain(
-		head.map!(g=>g.tail(1).front),
-		preLast
-	).map!(v=>DmdVersion(v.toString));
-}
-@("importantOnly")
-unittest
-{
-	import std.algorithm : equal;
-	assert([DmdVersion("v2.061.1-b2")].importantOnly.equal([DmdVersion("v2.061.1-b2")]));
-	assert([DmdVersion("v2.060.1-b1"),DmdVersion("v2.060.1-b2")].importantOnly.equal([DmdVersion("v2.060.1-b2")]));
-	assert([DmdVersion("v2.060.1-rc1"),DmdVersion("v2.060.1-rc2")].importantOnly.equal([DmdVersion("v2.060.1-rc2")]));
-	assert([DmdVersion("v2.061.1"),DmdVersion("v2.061.2")].importantOnly.equal([DmdVersion("v2.061.2")]));
-	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2"),DmdVersion("v2.061.1-b1"),DmdVersion("v2.061.1-rc1"),DmdVersion("v2.061.1"),DmdVersion("v2.061.2")].importantOnly.equal([DmdVersion("v2.060.2"),DmdVersion("v2.061.2")]));
-	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-rc1")].importantOnly.equal([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-rc1")]));
-	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-b1")].importantOnly.equal([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-b1")]));
-	assert([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-b1"),DmdVersion("v2.060.2-rc1")].importantOnly.equal([DmdVersion("v2.060.1"),DmdVersion("v2.060.2-rc1")]));
-}
 auto fetchDmdVersions(BitbucketTag[] delegate (int) fetchPage = toDelegate(&getDmdDiggerTags), Version oldest = Version(2,68,2))
 {
 	import std.array : appender;
 	import std.algorithm : countUntil, map, chunkBy, joiner, find, copy;
 	import std.range : front, take, drop;
+	import std.typecons : tuple;
 	auto app = appender!(BitbucketTag[]);
 	auto page = 1;
 	ptrdiff_t idx;
@@ -291,29 +258,37 @@ auto fetchDmdVersions(BitbucketTag[] delegate (int) fetchPage = toDelegate(&getD
 	auto output = appender!(DmdVersion[]);
 	auto versions = app.data;
 	
-	output.put(DmdVersion(versions.take(1).front.name));
+	output.put(DmdVersion(versions.take(1).front));
 
-	auto chunks = versions.drop(1).map!(v=>parseVersion(v.name)).chunkBy!((a,b){
-		return a.major == b.major && a.minor == b.minor;
+	auto chunks = versions.drop(1).map!(v=>tuple!("ver","tag")(parseVersion(v.name),v)).chunkBy!((a,b){
+		return a.ver.major == b.ver.major && a.ver.minor == b.ver.minor;
 	});
 
-	chunks.map!(chunk=>chunk.find!(c=>c.postfix.length==0).take(1).map!(v=>DmdVersion(v.toString))).joiner.copy(output);
+	chunks.map!(chunk=>chunk.find!(c=>c.ver.postfix.length==0).take(1).map!(v=>DmdVersion(v.tag))).joiner.copy(output);
 	return output.data;
 }
 unittest {
+	import std.datetime : Clock, UTC;
+	auto time = Clock.currTime(UTC()).toISOExtString();
+	auto target = BitbucketTagTarget("asdf",time);
 	auto data = [
-		[BitbucketTag("v2.071.1-b4"),BitbucketTag("v2.071.1-b3")],
-		[BitbucketTag("v2.071.1-b2"),BitbucketTag("v2.071.0")],
-		[BitbucketTag("v2.070.1"),BitbucketTag("v2.070.0")],
-		[BitbucketTag("v2.069.2"),BitbucketTag("v2.069.1")],
-		[BitbucketTag("v2.068.2")]
+		[BitbucketTag("v2.071.1-b4",target),BitbucketTag("v2.071.1-b3",target)],
+		[BitbucketTag("v2.071.1-b2",target),BitbucketTag("v2.071.0",target)],
+		[BitbucketTag("v2.070.1",target),BitbucketTag("v2.070.0",target)],
+		[BitbucketTag("v2.069.2",target),BitbucketTag("v2.069.1",target)],
+		[BitbucketTag("v2.068.2",target)]
 	];
 	auto fetch(int page)
 	{
 		return data[page-1];
 	}
 	import std.algorithm : equal;
-	assert(fetchDmdVersions(&fetch,Version(2,68,3)).equal([DmdVersion("v2.071.1-b4", "v2.071.1-b4"), DmdVersion("v2.071.0", "v2.071.0"), DmdVersion("v2.070.1", "v2.070.1"), DmdVersion("v2.069.2", "v2.069.2")]));
+	assert(fetchDmdVersions(&fetch,Version(2,68,3)).equal([
+		DmdVersion(BitbucketTag("v2.071.1-b4",target)), 
+		DmdVersion(BitbucketTag("v2.071.0",target)), 
+		DmdVersion(BitbucketTag("v2.070.1",target)), 
+		DmdVersion(BitbucketTag("v2.069.2",target))
+	]));
 }
 bool alreadyInstalled(string sha)
 {
