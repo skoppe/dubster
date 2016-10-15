@@ -50,7 +50,7 @@ void main()
 			if (migrator.needsMigration)
 			{
 				if (!settings.allowMigration)
-					throw new Exception("System needs migration but program not started with --migration flag. Please ***backup db*** and rerun with --migration flag.");
+					throw new Exception("System needs migration but program not started with --migrate flag. Please ***backup db*** and rerun with --migration flag.");
 				migrator.migrate();
 			}
 			new Server(settings.createServerSettings, db, new Reporter());

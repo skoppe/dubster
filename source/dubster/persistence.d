@@ -180,7 +180,6 @@ void migrateToVersion1(Persistence db) {
 		@name("_id") string id;
 		OldDmdVersion dmd;
 		OldDubPackage pkg;
-		Timestamp created;
 	}
 	struct OldJobResult {
 		OldJob job;
@@ -192,7 +191,7 @@ void migrateToVersion1(Persistence db) {
 	int skip = 0;
 	do
 	{
-		auto rawResults = db.find!("results",OldJobResult)(skip,24).map!(r=>RawJobResult(r.job.id,r.job.dmd.id,r.job.pkg._id,r.output,r.start,r.finish,r.job.created)).array();
+		auto rawResults = db.find!("results",OldJobResult)(skip,24).map!(r=>RawJobResult(r.job.id,r.job.dmd.id,r.job.pkg._id,r.output,r.start,r.finish,r.start)).array();
 		db.append!("rawJobResults")(rawResults);
 		if (rawResults.length != 24)
 			break;
