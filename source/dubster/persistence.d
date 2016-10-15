@@ -83,7 +83,12 @@ struct Config
 		if (col.empty)
 		{
 			ver = Version(0);
-			db.append!("system")(ver);
+			struct IndexedVersion
+			{
+				string id;
+				int ver;
+			}
+			db.append!("system")(IndexedVersion("system",0));
 		}
 		else
 			ver = col.front();
