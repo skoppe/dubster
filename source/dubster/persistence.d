@@ -28,7 +28,7 @@ import vibe.db.mongo.database;
 import vibe.core.concurrency;
 import vibe.core.log : logInfo;
 
-import std.traits : hasMember, hasUDA;
+import std.traits : hasMember, hasUDA, isArray;
 import std.algorithm : filter, remove, countUntil, map;
 import std.array : array;
 import std.format : format;
@@ -79,7 +79,7 @@ struct Config
 		Version ver;
 	}
 	this(Persistence db) {
-		auto col = db.find!("system",Version)(["id":"system"]);
+		auto col = db.find!("system",Version)(["id":"version"]);
 		if (col.empty)
 		{
 			ver = Version(0);
@@ -88,7 +88,7 @@ struct Config
 				string id;
 				int ver;
 			}
-			db.append!("system")(IndexedVersion("system",0));
+			db.append!("system")(IndexedVersion("version",0));
 		}
 		else
 			ver = col.front();
@@ -97,7 +97,7 @@ struct Config
 		return ver;
 	}
 	auto updateVersion(int newVersion){
-		db.update!("system")(["id":"system"],["$set":["ver":newVersion]]);
+		db.update!("system")(["id":"version"],["$set":["ver":Bson(newVersion)]]);
 		ver.ver = newVersion;
 	}
 }
@@ -134,6 +134,11 @@ class Persistence : EventDispatcher
 	}
 	@property auto config() { return _config; }
 	void append(string name, T)(T t) {
+		static if (isArray!T)
+		{
+			if (t.length == 0)
+				return;
+		}
 		getCollection!(name).insert(t);
 		dispatch!(name)("append",t);
 	}
