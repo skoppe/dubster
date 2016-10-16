@@ -53,7 +53,7 @@ struct DockerHost
   ushort port;
   string toString()
   {
-    if (port != ushort.init && protocol != "unix")
+    if (port != ushort.init && protocol != "http+unix" && protocol != "https+unix")
       return protocol ~ "://" ~ host ~ ":" ~ port.to!string;
     return protocol ~ "://" ~ host;
   }
@@ -74,8 +74,11 @@ struct DockerRemote
       import std.stdio;
       switch (matches[1])
       {
-        case "unix":
-          host = DockerHost("unix",matches[2],ushort.init);
+        case "http+unix":
+          host = DockerHost("http+unix",matches[2],ushort.init);
+          break;
+        case "https+unix":
+          host = DockerHost("https+unix",matches[2],ushort.init);
           break;
         case "http": 
         case "https":
