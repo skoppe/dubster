@@ -484,8 +484,8 @@ class Server : IDubsterApi
 		if (query.query.length > 0)
 			constraints["dmd.ver"] = ["$regex":Bson(query.query)];
 		if (constraints.length == 0)
-			return db.find!("dmdReleaseStats",DmdReleaseStats)(query.skip,query.limit).array();
-		return db.find!("dmdReleaseStats",DmdReleaseStats)(constraints,query.skip,query.limit).array();
+			return db.find!("dmdReleaseStats",DmdReleaseStats)(query.skip,query.limit).sort(["dmd.datetime":-1]).array();
+		return db.find!("dmdReleaseStats",DmdReleaseStats)(constraints,query.skip,query.limit).sort(["dmd.datetime":-1]).array();
 	}
 	DmdPackageStats[] getReleasePackages(ReleaseQueryParams query, string _release)
 	{
