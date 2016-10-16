@@ -202,6 +202,8 @@ void migrateToVersion1(Persistence db) {
 	do
 	{
 		auto rawResults = db.find!("results",OldJobResult)(skip,24).map!(r=>RawJobResult(r.job.id,r.job.dmd.id,r.job.pkg._id,r.output,r.start,r.finish,r.start)).array();
+		if (rawResults.length == 0)
+			break;
 		db.append!("rawJobResults")(rawResults);
 		if (rawResults.length != 24)
 			break;
