@@ -192,7 +192,7 @@ class BadgeService
 	{
 		this.db = db;
 	}
-	@path("/badge/:package/version/:version/:dmd")
+	@path("/badge/:package/:version/:dmd")
 	void getBadge(string _package, string _version, string _dmd, HTTPServerResponse res)
 	{
 		string id = _package ~ ":" ~ _version;
