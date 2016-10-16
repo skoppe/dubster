@@ -567,6 +567,7 @@ class Server : IDubsterApi
 				processedPackages.put(pkg);
 			} catch (Exception e)
 			{
+				logInfo("Exception while processing new package: %s",e);
 			}
 			sleep(50.msecs);
 		}
