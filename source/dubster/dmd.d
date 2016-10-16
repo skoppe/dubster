@@ -35,7 +35,7 @@ import std.datetime : SysTime;
 
 struct BitbucketTagTarget
 {
-	string commit;
+	@name("hash") string commit;
 	string date;
 }
 struct BitbucketTag
