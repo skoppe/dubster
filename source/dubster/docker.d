@@ -67,7 +67,7 @@ struct DockerRemote
     string certFile, caFile, keyFile;
     void parseHost(string hostString, bool tls)
     {
-      auto reg = ctRegex!`^([a-z]+):\/\/([^:]+)(?::([0-9]+))?$`;
+      auto reg = ctRegex!`^([a-z\+]+):\/\/(([^:]+)(?::([0-9]+))?)$`;
       auto matches = hostString.matchFirst(reg);
       if (!matches)
         throw new Exception("Failed to parse host string "~hostString);
@@ -270,7 +270,7 @@ auto autodetectDockerRemote()
     }
     version(Posix)
     {
-      host = "unix:///var/run/docker.sock";
+      host = "http+unix:///var/run/docker.sock";
     }
     assert(host !is null,"Cannot detect docker, please set DOCKER_HOST environment variable");
   }
