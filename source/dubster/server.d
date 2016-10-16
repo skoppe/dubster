@@ -560,8 +560,10 @@ class Server : IDubsterApi
 				if (db.exists!"jobSets"(["_id":js.id]))
 					continue;
 				auto jobs = createJobs(knownDmds,[pkg],js).array();
-				if (jobs.length == 0)
+				if (jobs.length == 0){
+					processedPackages.put(pkg);
 					continue;
+				}
 				db.append!"packages"([pkg]);
 				addJobs(jobs,js);
 				processedPackages.put(pkg);
@@ -619,7 +621,7 @@ class Server : IDubsterApi
 			return JobResult(t.job,t.result.start,t.result.finish,t.result.output,t.result.output.parseError);
 		}).array();
 
-		db.append!("results")([results]);
+		db.append!("results")(results);
 		js.success = cast(int)results.count!(r=>r.error.isSuccess);
 		js.failed = cast(int)results.count!(r=>r.error.isFailed);
 		js.unknown = cast(int)results.count!(r=>r.error.isUndefined);
