@@ -559,22 +559,22 @@ class Server : IDubsterApi
 			{
 				pkg.extendDubPackageWithInfo();
 				auto js = JobSet(JobTrigger.PackageUpdate,pkg.name~":"~pkg.ver);
+				processedPackages.put(pkg);
 				if (db.exists!"jobSets"(["_id":js.id]))
 					continue;
+
 				auto jobs = createJobs(knownDmds,[pkg],js).array();
-				if (jobs.length == 0){
-					processedPackages.put(pkg);
+				if (jobs.length == 0)
 					continue;
-				}
-				db.append!"packages"([pkg]);
+
 				addJobs(jobs,js);
-				processedPackages.put(pkg);
 			} catch (Exception e)
 			{
 				logInfo("Exception while processing new package: %s",e);
 			}
 			sleep(50.msecs);
 		}
+		db.append!"packages"(processedPackages.data);
 		auto oldPackages = knownPackages.setDifference(latest).array();
 		knownPackages = chain(processedPackages.data,samePackages).array();
 		knownPackages.sort();
