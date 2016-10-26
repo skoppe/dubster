@@ -201,6 +201,7 @@ class BadgeService
 			throw new HTTPStatusException(404);
 		auto result = stats.front();
 		string text, color;
+		auto statusCode = 301; // permanent redirect
 		if (result.error.isSuccess())
 		{
 			color = "green";
@@ -213,13 +214,14 @@ class BadgeService
 		{
 			color = "lightgray";
 			text = "n/a";
+			statusCode = 302; // unless we have no info yet (build might complete in future)
 		}
 		auto encode(string input)
 		{
 			import std.array : replace;
 			return urlEncode(input).replace("-","--");
 		}
-		res.redirect("https://img.shields.io/badge/"~encode(_dmd)~"-"~encode(text)~"-"~encode(color)~".svg",301);
+		res.redirect("https://img.shields.io/badge/"~encode(_dmd)~"-"~encode(text)~"-"~encode(color)~".svg",statusCode);
 	}
 }
 class Server : IDubsterApi
