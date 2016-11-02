@@ -80,30 +80,36 @@ struct Config
 	private {
 		Persistence db;
 		Version ver;
+    void init()() {
+		  auto col = db.find!("system",Version)(["id":"version"]);
+      if (col.empty)
+      {
+        import std.meta;
+        template isMigrator(alias T) {
+          enum isMigrator = hasUDA!(mixin(T),Version);
+        }
+        enum migrators = staticSort!(sortMigrators,Filter!(isMigrator,__traits(allMembers, dubster.persistence)));
+        static if (migrators.length == 0)
+          enum lastVersion = 0;
+        else
+          enum lastVersion = getMigratorVersion!(migrators[$-1]);
+        if (db.emptyOld!("results"))
+          ver = Version(lastVersion);
+        else
+          ver = Version(0);
+        struct IndexedVersion
+        {
+          string id;
+          int ver;
+        }
+        db.append!("system")(IndexedVersion("version",ver.ver));
+      }
+      else
+        ver = col.front();
+    }
 	}
 	this(Persistence db) {
-		auto col = db.find!("system",Version)(["id":"version"]);
-		if (col.empty)
-    {
-      import std.meta;
-      template isMigrator(alias T) {
-        enum isMigrator = hasUDA!(mixin(T),Version);
-      }
-      enum migrators = staticSort!(sortMigrators,Filter!(isMigrator,__traits(allMembers, dubster.persistence)));
-      enum lastVersion = getMigratorVersion!(migrators[$-1]);
-      if (db.emptyOld!("results"))
-        ver = Version(lastVersion);
-      else
-        ver = Version(0);
-			struct IndexedVersion
-			{
-				string id;
-				int ver;
-			}
-			db.append!("system")(IndexedVersion("version",0));
-		}
-		else
-			ver = col.front();
+    init();
 	}
 	auto getVersion() {
 		return ver;
@@ -134,6 +140,7 @@ class Persistence : EventDispatcher
 		dmdReleaseStats = db["dmdReleaseStats"];
 		rawJobResults = db["rawJobResults"];
 		system = db["system"];
+    logInfo("Loading Config from DB");
 		_config = Config(this);
     this.db = db;
 	}
@@ -200,7 +207,7 @@ class Persistence : EventDispatcher
     return getCollection!(name).find().empty();
   }
   bool emptyOld(string name)() {
-    return db[name].find().empty();
+    return db[name].count(Bson()) == 0;
   }
 	void ensureIndex(string name, Fields)(Fields f) {
 		return getCollection!(name).ensureIndex(f);
@@ -251,6 +258,7 @@ void migrateToVersion2(Persistence db) {
 	db.drop!("dmds");
 	db.dropOld!("executingJobs");
 	db.drop!("jobSets");
+	db.dropOld!("dmdPackageStats");
 	db.drop!("packages");
 	db.drop!("jobs");
 	db.dropOld!("results");

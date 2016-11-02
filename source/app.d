@@ -22,7 +22,7 @@ import dubster.reporter;
 import dubster.analyser;
 import dubster.persistence;
 
-import std.stdio : writeln;
+import vibe.core.log : logInfo;
 import std.process : environment;
 import vibe.inet.url : URL;
 import vibe.core.core : runTask, runEventLoop;
@@ -33,6 +33,7 @@ import vibe.db.mongo.mongo : connectMongoDB;
 
 void main()
 {
+  logInfo("Starting Dubster");
 	auto settings = readSettings();
 	if (!settings.validate())
 		return printCommandLineHelp();
@@ -40,21 +41,26 @@ void main()
 		return;
 
 	runTask({
-		if (settings.worker)
-			new Worker(settings.createWorkerSettings);
-		else if (settings.server)
+    if (settings.worker) {
+      logInfo("Starting Worker");
+      new Worker(settings.createWorkerSettings);
+    } else if (settings.server)
 		{
+      logInfo("Staring Persistence Layer");
 			auto db = new Persistence(connectMongoDB(settings.mongoHost).getDatabase(settings.mongoDb));
 			auto migrator = db.migrator();
 
 			if (migrator.needsMigration)
 			{
 				if (!settings.allowMigration)
-					throw new Exception("System needs migration but program not started with --migrate flag. Please ***backup db*** and rerun with --migration flag.");
+					throw new Exception("System needs migration but program not started with --migrate flag. Please ***backup db*** and rerun with --migrate flag.");
+        logInfo("Starting Migration");
 				migrator.migrate();
 			}
-			new Server(settings.createServerSettings, db, new Reporter());
-		}
+      auto reporter = new Reporter();
+      logInfo("Starting Server");
+			new Server(settings.createServerSettings, db, reporter);
+    }
 	});
 
 	runEventLoop();
