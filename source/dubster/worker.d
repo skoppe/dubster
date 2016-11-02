@@ -82,14 +82,13 @@ class Worker
 		try
 		{
 			settings.client.buildPackage(job.pkg,appender,compilerPath,settings.memoryLimit);
-			error = appender.data.parseError();
 		} catch (TimeoutException e)
 		{
 			stdoutSink.put(format("Timeout while building %s package",job.pkg.name));
 			error = ErrorStats(ErrorType.Timeout,1,"");
 		}
 		Timestamp end = getTimestamp();
-		settings.server.postJobResult(JobResult(job,start,end,appender.data,error));
+		settings.server.postJobResult(RawJobResult(job.id,job.dmd.id,job.pkg._id,appender.data,start,end,job.creation));
 		return true;
 	}
 }

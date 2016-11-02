@@ -25,6 +25,7 @@ import dubster.analyser;
 import dubster.persistence;
 
 import vibe.data.json;
+import vibe.data.bson : serializeToBson;
 import vibe.db.mongo.collection;
 import vibe.core.task;
 import vibe.http.server;
@@ -74,6 +75,7 @@ struct JobResultsQueryParams
 	@optional JobTrigger[] types;
 	@optional int skip;
 	@optional int limit = 24;
+  @optional JobStatus status = JobStatus.All;
 }
 struct JobSetComparison
 {
@@ -87,11 +89,11 @@ interface IDubsterApi
 	@path("/worker/job")
 	Json getJob();
 	@path("/worker/results")
-	void postJobResult(JobResult results);
+	void postJobResult(RawJobResult results);
 	@path("/results")
-	JobResult[] getJobResults(JobResultsQueryParams query);
+	Job[] getJobResults(JobResultsQueryParams query);
 	@path("/results/:id")
-	JobResult getJobResult(string _id);
+	string getJobOutput(string _id);
 	@path("/pull/:component/:number")
 	void postPullRequest(string _component, string _number);
 	@path("/dmd")
@@ -101,7 +103,7 @@ interface IDubsterApi
 	@path("/jobsets/:id")
 	JobSet getJobSet(string _id);
 	@path("/jobsets/:id/jobs")
-	JobResult[] getJobsInJobSet(string _id, int skip = 0, int limit = 24);
+	Job[] getJobsInJobSet(string _id, int skip = 0, int limit = 24);
 	@path("/jobsets/:from/compare/:to")
 	JobSetComparison getComparison(string _from, string _to);
 	@path("/packages")
@@ -113,7 +115,7 @@ interface IDubsterApi
 	@path("/releases")
 	DmdReleaseStats[] getReleases(ReleaseQueryParams query);
 	@path("/releases/:release")
-	DmdPackageStats[] getReleasePackages(ReleaseQueryParams query, string _release);
+	Job[] getReleasePackages(ReleaseQueryParams query, string _release);
 }
 struct ServerSettings
 {
@@ -171,20 +173,6 @@ struct DmdReleaseStats
 	int failed;
 	int unknown;
 }
-struct DmdPackageStats
-{
-	Job job;
-	Timestamp start;
-	Timestamp finish;
-	ErrorStats error;
-	this(JobResult result)
-	{
-		job = result.job;
-		start = result.start;
-		finish = result.finish;
-		error = result.error;
-	}
-}
 class BadgeService
 {
 	Persistence db;
@@ -196,17 +184,17 @@ class BadgeService
 	void getBadge(string _package, string _version, string _dmd, HTTPServerResponse res)
 	{
 		string id = _package ~ ":" ~ _version;
-		auto stats = db.find!("dmdPackageStats",DmdPackageStats)(["job.pkg._id":id,"job.dmd.ver":_dmd]);
+		auto stats = db.find!("jobs",Job)(["pkg._id":id,"dmd.ver":_dmd]);
 		if (stats.empty)
 			throw new HTTPStatusException(404);
-		auto result = stats.front();
+		auto job = stats.front();
 		string text, color;
 		auto statusCode = 301; // permanent redirect
-		if (result.error.isSuccess())
+		if (job.result.isSuccess())
 		{
 			color = "green";
 			text = "success";
-		} else if (result.error.isFailed())
+		} else if (job.result.isFailed())
 		{
 			color = "red";
 			text = "failed";
@@ -286,16 +274,15 @@ class Server : IDubsterApi
 			return Json(null);
 
 		Json j = job.get.serializeToJson();
-		j["started"] = getTimestamp();
-		db.append!("executingJobs")([j]);
-		db.remove!("pendingJobs")(job.get);
+		j["start"] = getTimestamp();
+    db.update!("jobs")(["_id":Bson(j["id"])],["$set":["status":Bson(JobStatus.Executing),"start":Bson(j["start"]),"modified":Bson(getTimestamp())]]);
 		js.pendingJobs -= 1;
 		js.executingJobs += 1;
-		if (js.started == Timestamp.init)
+		if (js.start == Timestamp.init)
 		{
-			js.started = getTimestamp();
+			js.start = getTimestamp();
 			scheduler.updateJobSet(js);
-			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["pendingJobs":Bson(js.pendingJobs),"executingJobs":Bson(js.executingJobs),"started":Bson(js.started)]]);
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["pendingJobs":Bson(js.pendingJobs),"executingJobs":Bson(js.executingJobs),"start":Bson(js.start)]]);
 		} else
 		{
 			scheduler.updateJobSet(js);
@@ -303,32 +290,32 @@ class Server : IDubsterApi
 		}
 		return job.get().serializeToJson();
 	}
-	void postJobResult(JobResult results)
+	void postJobResult(RawJobResult raw)
 	{
-		auto raw = results.getRawJobResult();
+    auto job = db.find!("jobs",Job)(["_id":raw.jobId]).front.extendWith(raw);
 		db.append!("rawJobResults")([raw]);
-		db.append!("results")([results]);
-		db.remove!("executingJobs")(results.job);
-		auto js = scheduler.getJobSet(results.job.jobSet);
+		db.update!("jobs")(["_id":Bson(job.id)],["$set":["finish":Bson(job.finish),"result":job.result.serializeToBson(),"status":Bson(JobStatus.Completed),"modified":Bson(getTimestamp())]]);
+		auto js = scheduler.getJobSet(job.jobSet);
 		js.executingJobs -= 1;
 		js.completedJobs += 1;
-		if (results.error.isSuccess)
+		if (job.result.isSuccess)
 			js.success += 1;
-		if (results.error.isFailed)
+		if (job.result.isFailed)
 			js.failed += 1;
-		if (results.error.isUndefined)
+		if (job.result.isUndefined)
 			js.unknown += 1;
 		if (js.pendingJobs == 0)
 		{
-			js.finished = getTimestamp();
+			js.finish = getTimestamp();
 			scheduler.removeJobSet(js.id);
-			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["executingJobs":Bson(js.executingJobs),"completedJobs":Bson(js.completedJobs),"success":Bson(js.success),"failed":Bson(js.failed),"unknown":Bson(js.unknown),"finished":Bson(js.finished)]]);
+      // todo: this is problematic with concurrency, better to use mongo's incr/decr functions
+			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["executingJobs":Bson(js.executingJobs),"completedJobs":Bson(js.completedJobs),"success":Bson(js.success),"failed":Bson(js.failed),"unknown":Bson(js.unknown),"finish":Bson(js.finish)]]);
 		} else
 		{
 			scheduler.updateJobSet(js);
 			db.update!("jobSets")(["_id":Bson(js.id)],["$set":["executingJobs":Bson(js.executingJobs),"completedJobs":Bson(js.completedJobs),"success":Bson(js.success),"failed":Bson(js.failed),"unknown":Bson(js.unknown)]]);
 		}
-		db.updateStats(results);
+		db.updateStats(job);
 	}
 	/*void postJob(JobRequest job)
 	{
@@ -371,9 +358,19 @@ class Server : IDubsterApi
 			addJobs(jobs,js);
 		}
 	}*/
-	JobResult[] getJobResults(JobResultsQueryParams query)
+	Job[] getJobResults(JobResultsQueryParams query)
 	{
+    auto getSort(JobResultsQueryParams query) {
+      final switch (query.status) {
+        case JobStatus.All: return ["modified":-1];
+        case JobStatus.Completed: return ["finish":-1];
+        case JobStatus.Pending: return ["creation":-1];
+        case JobStatus.Executing: return ["start":-1];
+      }
+    }
 		Bson[string] constraints;
+    if (query.status != JobStatus.All)
+      constraints["status"] = query.status;
 		if (query.pkg.length > 0)
 			constraints["job.pkg.name"] = Bson(query.pkg);
 		if (query.ver.length > 0)
@@ -381,15 +378,15 @@ class Server : IDubsterApi
 		if (query.types.length > 0)
 			constraints["trigger"] = Bson(["$in": Bson(query.types.map!(to!string).map!(a=>Bson(a)).array)]);
 		if (constraints.length == 0)
-			return db.find!("results",JobResult)(query.skip,query.limit).sort(["created":-1]).array();
-		return db.find!("results",JobResult)(constraints,query.skip,query.limit).sort(["created":-1]).array();
+			return db.find!("jobs",Job)(query.skip,query.limit).sort(getSort(query)).array();
+		return db.find!("jobs",Job)(constraints,query.skip,query.limit).sort(getSort(query)).array();
 	}
-	JobResult getJobResult(string _id)
+	string getJobOutput(string _id)
 	{
-		auto cursor = db.find!("results",JobResult)(["job._id": _id]);
+		auto cursor = db.find!("rawJobResults",RawJobResult)(["_id": _id]);
 		if (cursor.empty)
 			throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found.")]));
-		return cursor.front();
+		return cursor.front().output;
 	}
 	void postPullRequest(string _component, string _number)
 	{
@@ -423,8 +420,8 @@ class Server : IDubsterApi
 		if (query.types.length > 0)
 			constraints["trigger"] = Bson(["$in": Bson(query.types.map!(to!string).map!(a=>Bson(a)).array)]);
 		if (constraints.length == 0)
-			return db.find!("jobSets",JobSet)(query.skip,query.limit).sort(["created":-1]).array();
-		return db.find!("jobSets",JobSet)(constraints,query.skip,query.limit).sort(["created":-1]).array();
+			return db.find!("jobSets",JobSet)(query.skip,query.limit).sort(["creation":-1]).array();
+		return db.find!("jobSets",JobSet)(constraints,query.skip,query.limit).sort(["creation":-1]).array();
 	}
 	JobSet getJobSet(string _id)
 	{
@@ -433,16 +430,16 @@ class Server : IDubsterApi
 			throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found.")]));
 		return cursor.front();
 	}
-	JobResult[] getJobsInJobSet(string _id, int skip = 0, int limit = 24)
+	Job[] getJobsInJobSet(string _id, int skip = 0, int limit = 24)
 	{
-		return db.find!("results",JobResult)(["job.jobSet":_id],skip,limit).sort(["start":-1]).array();
+		return db.find!("jobs",Job)(["jobSet":Bson(_id),"status":Bson(JobStatus.Completed)],skip,limit).sort(["start":-1]).array();
 	}
 	JobSetComparison getComparison(string _from, string _to)
 	{
 		auto readData(string id)
 		{
-			auto cursor = db.find!("results",JobResultSummary)(["job.jobSet": id]);
-			auto app = appender!(JobResultSummary[]);
+			auto cursor = db.find!("jobs",JobSummary)(["jobSet": Bson(id),"status":Bson(JobStatus.Completed)]);
+			auto app = appender!(JobSummary[]);
 			cursor.copy(app);
 			return app.data;
 		}
@@ -458,7 +455,7 @@ class Server : IDubsterApi
 
 		auto toJobs = readData(_to);
 		auto fromJobs = readData(_from);
-		return JobSetComparison(toJobSet,fromJobSet,compareJobResultSets(fromJobs,toJobs));
+		return JobSetComparison(toJobSet,fromJobSet,compareJobSummaries(fromJobs,toJobs));
 	}
 	PackageStats[] getPackages(PackageQueryParams query)
 	{
@@ -489,19 +486,19 @@ class Server : IDubsterApi
 			return db.find!("dmdReleaseStats",DmdReleaseStats)(query.skip,query.limit).sort(["dmd.datetime":-1]).array();
 		return db.find!("dmdReleaseStats",DmdReleaseStats)(constraints,query.skip,query.limit).sort(["dmd.datetime":-1]).array();
 	}
-	DmdPackageStats[] getReleasePackages(ReleaseQueryParams query, string _release)
+	Job[] getReleasePackages(ReleaseQueryParams query, string _release)
 	{
-		Bson[string] constraints = ["job.dmd.ver":Bson(_release)];
+		Bson[string] constraints = ["dmd.ver":Bson(_release),"status":Bson(JobStatus.Completed)];
 		if (query.query.length > 0)
-			constraints["job.pkg.name"] = ["$regex":Bson(query.query)];
+			constraints["pkg.name"] = ["$regex":Bson(query.query)];
 		if (constraints.length == 0)
-			return db.find!("dmdPackageStats",DmdPackageStats)(query.skip,query.limit).array();
-		return db.find!("dmdPackageStats",DmdPackageStats)(constraints,query.skip,query.limit).array();
-	}
+			return db.find!("jobs",Job)(query.skip,query.limit).array();
+		return db.find!("jobs",Job)(constraints,query.skip,query.limit).array();
+  }
 	private void restore()
 	{
 		db.updateComputedData();
-		auto previousJobs = db.readAll!("pendingJobs",Job).array();
+		auto previousJobs = db.find!("jobs",Job)(["status":JobStatus.Pending]).array();
 		auto previousJobSets = db.readAll!("jobSets",JobSet).array();
 		if (previousJobs.length > 0)
 			logInfo("Got %s previous jobs",previousJobs.length);
@@ -619,17 +616,22 @@ class Server : IDubsterApi
 		auto newJobs = jobsWithResults[0..$-cachedJobs.length].map!(t=>t.job).array();
 
 		auto results = cachedJobs.map!((t){
-			t.job.created = t.result.created;
-			return JobResult(t.job,t.result.start,t.result.finish,t.result.output,t.result.output.parseError);
+      Job j = t.job;
+      j.creation = t.result.creation;
+      j.start = t.result.start;
+      j.finish = t.result.finish;
+      j.result = t.result.output.parseError;
+      j.status = JobStatus.Completed;
+      return j;
 		}).array();
 
-		db.append!("results")(results);
-		js.success = cast(int)results.count!(r=>r.error.isSuccess);
-		js.failed = cast(int)results.count!(r=>r.error.isFailed);
-		js.unknown = cast(int)results.count!(r=>r.error.isUndefined);
+		db.append!("jobs")(results);
+		js.success = cast(int)results.count!(r=>r.result.isSuccess);
+		js.failed = cast(int)results.count!(r=>r.result.isFailed);
+		js.unknown = cast(int)results.count!(r=>r.result.isUndefined);
 		js.completedJobs = results.length;
 		js.pendingJobs = newJobs.length;
-		db.append!"pendingJobs"(newJobs);
+		db.append!"jobs"(newJobs);
 		db.append!"jobSets"([js]);
 		foreach(result; results)
 			db.updateStats(result);
@@ -652,58 +654,51 @@ class Server : IDubsterApi
 		setTimer(5.minutes, &this.sync, false);
 	}
 }
-void updateStats(Persistence db, JobResult results)
+void updateStats(Persistence db, Job results)
 {
 	db.updatePackageStats(results);
 	db.updateDmdReleaseStats(results);
-	db.updateDmdPackageStats(results);
 }
-void updatePackageStats(Persistence db, JobResult results)
+void updatePackageStats(Persistence db, Job job)
 {
-	void update(string collection, S)(JobResult result, string id, string indexField)
+	void update(string collection, S)(Job job, string id, string indexField)
 	{
 		auto stats = db.find!(collection,S)([indexField:id]).limit(1);
 		if (stats.empty)
 		{
-			auto stat = S(results.job.pkg,results.error.isSuccess,results.error.isFailed,results.error.isUndefined);
+			auto stat = S(job.pkg,job.result.isSuccess,job.result.isFailed,job.result.isUndefined);
 			db.append!(collection)(stat);
-		} else if (results.error.isSuccess)
+		} else if (job.result.isSuccess)
 			db.update!(collection)([indexField:id],["$set":["success":(stats.front().success + 1)]]);
-		else if (results.error.isFailed)
+		else if (job.result.isFailed)
 			db.update!(collection)([indexField:id],["$set":["failed":(stats.front().failed + 1)]]);
 		else
 			db.update!(collection)([indexField:id],["$set":["unknown":(stats.front().unknown + 1)]]);
 	}
-	if (!(results.job.trigger == JobTrigger.DmdRelease || results.job.trigger == JobTrigger.PackageUpdate))
+	if (!(job.trigger == JobTrigger.DmdRelease || job.trigger == JobTrigger.PackageUpdate))
 		return;
-	update!("packageStats",PackageStats)(results, results.job.pkg.name, "pkg.name");
-	update!("packageVersionStats",PackageVersionStats)(results, results.job.pkg._id, "pkg._id");
+	update!("packageStats",PackageStats)(job, job.pkg.name, "pkg.name");
+	update!("packageVersionStats",PackageVersionStats)(job, job.pkg._id, "pkg._id");
 }
-void updateDmdReleaseStats(Persistence db, JobResult results)
+void updateDmdReleaseStats(Persistence db, Job job)
 {
-	void update(string collection, S)(JobResult result, string id)
+	void update(string collection, S)(Job job, string id)
 	{
 		auto stats = db.find!(collection,S)(["dmd._id":id]).limit(1);
 		if (stats.empty)
 		{
-			auto stat = S(result.job.dmd,results.error.isSuccess,results.error.isFailed,results.error.isUndefined);
+			auto stat = S(job.dmd,job.result.isSuccess,job.result.isFailed,job.result.isUndefined);
 			db.append!(collection)(stat);
-		} else if (results.error.isSuccess)
+		} else if (job.result.isSuccess)
 			db.update!(collection)(["dmd._id":id],["$set":["success":(stats.front().success + 1)]]);
-		else if (results.error.isFailed)
+		else if (job.result.isFailed)
 			db.update!(collection)(["dmd._id":id],["$set":["failed":(stats.front().failed + 1)]]);
 		else
 			db.update!(collection)(["dmd._id":id],["$set":["unknown":(stats.front().unknown + 1)]]);
 	}
-	if (!(results.job.trigger == JobTrigger.DmdRelease || results.job.trigger == JobTrigger.PackageUpdate))
+	if (!(job.trigger == JobTrigger.DmdRelease || job.trigger == JobTrigger.PackageUpdate))
 		return;
-	update!("dmdReleaseStats",DmdReleaseStats)(results, results.job.dmd.id);
-}
-void updateDmdPackageStats(Persistence db, JobResult result)
-{
-	if (!(result.job.trigger == JobTrigger.DmdRelease || result.job.trigger == JobTrigger.PackageUpdate))
-		return;
-	db.append!("dmdPackageStats")(DmdPackageStats(result));
+	update!("dmdReleaseStats",DmdReleaseStats)(job, job.dmd.id);
 }
 void updateComputedData(Persistence db)
 {
@@ -712,10 +707,9 @@ void updateComputedData(Persistence db)
 	db.drop!("packageStats");
 	db.drop!("packageVersionStats");
 	db.drop!("dmdReleaseStats");
-	db.drop!("dmdPackageStats");
 	do
 	{
-		auto cursor = db.find!("results",JobResult)(skip,24).array();
+		auto cursor = db.find!("jobs",Job)(["status":JobStatus.Completed],skip,24).array();
 		foreach(r; cursor)
 			db.updateStats(r);
 		if (cursor.length != 24)

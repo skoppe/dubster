@@ -34,13 +34,13 @@ struct JobExecuting
 }
 struct JobComplete
 {
-	JobResult results;
+	Job results;
 	Timestamp timestamp;
 }
 interface IReporter
 {
 	void executing(Job job);
-	void complete(JobResult results);
+	void complete(Job results);
 }
 class Reporter : IReporter
 {
@@ -48,7 +48,7 @@ class Reporter : IReporter
 	{
 		writeln("Executing Job: ",job);
 	}
-	void complete(JobResult results)
+	void complete(Job results)
 	{
 		writeln("Completed Job: ",results);
 	}

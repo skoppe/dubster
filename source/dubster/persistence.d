@@ -39,6 +39,7 @@ struct EventMessage
 	string type;
 	Json data;
 }
+
 class EventDispatcher
 {
 	private Task[] subscribers;
@@ -68,10 +69,12 @@ class EventDispatcher
 			dispatch(EventMessage(name,type,t.serializeToJson()));
 	}
 }
+
 struct Version
 {
 	int ver;
 }
+
 struct Config
 {
 	private {
@@ -81,8 +84,17 @@ struct Config
 	this(Persistence db) {
 		auto col = db.find!("system",Version)(["id":"version"]);
 		if (col.empty)
-		{
-			ver = Version(0);
+    {
+      import std.meta;
+      template isMigrator(alias T) {
+        enum isMigrator = hasUDA!(mixin(T),Version);
+      }
+      enum migrators = staticSort!(sortMigrators,Filter!(isMigrator,__traits(allMembers, dubster.persistence)));
+      enum lastVersion = getMigratorVersion!(migrators[$-1]);
+      if (db.emptyOld!("results"))
+        ver = Version(lastVersion);
+      else
+        ver = Version(0);
 			struct IndexedVersion
 			{
 				string id;
@@ -101,29 +113,29 @@ struct Config
 		ver.ver = newVersion;
 	}
 }
+
 class Persistence : EventDispatcher
 {
 	private {
-		MongoCollection pendingJobs, executingJobs, dmds, packages, 
-			results, jobSets, packageStats, packageVersionStats, dmdReleaseStats, 
-			dmdPackageStats, rawJobResults, system;
+		MongoCollection jobs, dmds, packages, 
+			jobSets, packageStats, packageVersionStats, dmdReleaseStats, 
+			rawJobResults, system;
 		Config _config;
+    MongoDatabase db;
 	}
 
 	this(MongoDatabase db) {
-		pendingJobs = db["pendingJobs"];
-		executingJobs = db["executingJobs"];
+		jobs = db["jobs"];
 		dmds = db["dmds"];
 		packages = db["packages"];
-		results = db["results"];
 		jobSets = db["jobSets"];
 		packageStats = db["packageStats"];
 		packageVersionStats = db["packageVersionStats"];
 		dmdReleaseStats = db["dmdReleaseStats"];
-		dmdPackageStats = db["dmdPackageStats"];
 		rawJobResults = db["rawJobResults"];
 		system = db["system"];
 		_config = Config(this);
+    this.db = db;
 	}
 	private auto getCollection(string name)() {
 		static assert(
@@ -153,6 +165,10 @@ class Persistence : EventDispatcher
 		getCollection!(name).remove();
 		dispatch!(name)("remove");
 	}
+  void dropOld(string name)() {
+    db[name].remove();
+    dispatch!(name)("remove");
+  }
 	void update(string name, Selector, Updates)(Selector s, Updates u) {
 		getCollection!(name).update(s,u);
 		struct Update
@@ -165,6 +181,12 @@ class Persistence : EventDispatcher
 	auto find(string name, T, Query)(Query q, int skip = 0, int limit = 0) {
 		return getCollection!(name).find!(T,Query)(q,null,QueryFlags.None).skip(skip).limit(limit);
 	}
+  auto findOld(string name, T)(int skip = 0, int limit = 0) {
+    auto cursor = db[name].find!(T).skip(skip);
+    if (limit == 0)
+      return cursor;
+		return cursor.limit(limit);
+  }
 	auto find(string name, T)(int skip = 0, int limit = 0) {
 		auto cursor = getCollection!(name).find!(T).skip(skip);
 		if (limit == 0)
@@ -174,10 +196,17 @@ class Persistence : EventDispatcher
 	bool exists(string name, Query)(Query q) {
 		return !getCollection!(name).find(q).empty();
 	}
+  bool empty(string name)() {
+    return getCollection!(name).find().empty();
+  }
+  bool emptyOld(string name)() {
+    return db[name].find().empty();
+  }
 	void ensureIndex(string name, Fields)(Fields f) {
 		return getCollection!(name).ensureIndex(f);
 	}
 }
+
 @Version(1)
 void migrateToVersion1(Persistence db) {
 	struct OldDmdVersion {
@@ -201,7 +230,7 @@ void migrateToVersion1(Persistence db) {
 	int skip = 0;
 	do
 	{
-		auto rawResults = db.find!("results",OldJobResult)(skip,24).map!(r=>RawJobResult(r.job.id,r.job.dmd.id,r.job.pkg._id,r.output,r.start,r.finish,r.start)).array();
+		auto rawResults = db.findOld!("results",OldJobResult)(skip,24).map!(r=>RawJobResult(r.job.id,r.job.dmd.id,r.job.pkg._id,r.output,r.start,r.finish,r.start)).array();
 		if (rawResults.length == 0)
 			break;
 		db.append!("rawJobResults")(rawResults);
@@ -210,12 +239,13 @@ void migrateToVersion1(Persistence db) {
 		skip += 24;
 	} while (1);
 	db.drop!("dmds");
-	db.drop!("executingJobs");
+	db.dropOld!("executingJobs");
 	db.drop!("jobSets");
 	db.drop!("packages");
-	db.drop!("pendingJobs");
-	db.drop!("results");
+	db.drop!("jobs");
+	db.dropOld!("results");
 }
+
 private template getMigratorVersion(alias T) {
 	import std.traits;
 	enum getMigratorVersion = getUDAs!(mixin(T),Version)[0].ver;
@@ -224,14 +254,15 @@ private template sortMigrators(alias T1, alias T2) {
 	import std.traits;
 	enum sortMigrators = getMigratorVersion!T1 - getMigratorVersion!T2;
 }
+
 auto migrator(Persistence db){
-	import std.meta;
-	template isMigrator(alias T) {
-		enum isMigrator = hasUDA!(mixin(T),Version);
-	}
-	enum migrators = staticSort!(sortMigrators,Filter!(isMigrator,__traits(allMembers, dubster.persistence)));
+  import std.meta;
 	struct Migrator{
 		private Persistence db;
+    template isMigrator(alias T) {
+      enum isMigrator = hasUDA!(mixin(T),Version);
+    }
+    enum migrators = staticSort!(sortMigrators,Filter!(isMigrator,__traits(allMembers, dubster.persistence)));
 		this(Persistence db) { this.db = db; }
 		bool needsMigration(){
 			static if (migrators.length > 0)

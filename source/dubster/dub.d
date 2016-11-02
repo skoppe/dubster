@@ -28,6 +28,7 @@ import std.algorithm : map, filter;
 import dubster.docker;
 import dubster.reporter;
 import std.datetime : SysTime;
+import std.range;
 
 struct DubPackage
 {

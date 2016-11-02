@@ -40,15 +40,19 @@ struct Job
 	string jobSet;
 	JobTrigger trigger;
 	string triggerId;
-	Timestamp created;
+	Timestamp creation;
+  Timestamp modified;
+  Timestamp start;
+  Timestamp finish;
+  ErrorStats result;
+  JobStatus status = JobStatus.Pending;
 }
-struct JobResult
+enum JobStatus
 {
-	Job job;
-	Timestamp start;
-	Timestamp finish;
-	string output;	// TODO: We can drop this since it is already stored in the RawJobResults table
-	ErrorStats error;
+  All = 0,
+  Pending = 1,
+  Executing = 2,
+  Completed = 3
 }
 struct RawJobResult
 {
@@ -58,11 +62,13 @@ struct RawJobResult
 	string output;
 	Timestamp start;
 	Timestamp finish;
-	Timestamp created;
+	Timestamp creation;
 }
-auto getRawJobResult(JobResult r)
+auto extendWith(Job j, RawJobResult r)
 {
-	return RawJobResult(r.job.id,r.job.dmd.id,r.job.pkg._id,r.output,r.start,r.finish,r.job.created);
+  j.finish = r.finish;
+  j.result = r.output.parseError();
+  return j;
 }
 enum JobTrigger:string
 {
@@ -80,9 +86,9 @@ struct JobSet
 	string triggerId;
 	int priority = 0; // 0 is normal, -x is lower, +x is higher
 	@name("_id") string id;
-	Timestamp created;
-	Timestamp started;
-	Timestamp finished;
+	Timestamp creation;
+	Timestamp start;
+	Timestamp finish;
 	long pendingJobs;
 	long executingJobs;
 	long completedJobs;
@@ -95,7 +101,7 @@ struct JobSet
 		triggerId = tId;
 		priority = p;
 		id = sha1Of(t.to!string ~ tId).toHexString().text;
-		created = getTimestamp();
+		creation = getTimestamp();
 	}
 	int opCmp(ref const JobSet other)
 	{
@@ -103,9 +109,9 @@ struct JobSet
 		auto r1 = priority - other.priority;
 		if (r1 != 0)
 			return r1;
-		if (created < other.created)
+		if (creation < other.creation)
 			return -1;
-		if (created > other.created)
+		if (creation > other.creation)
 			return 1;
 		return 0;
 	}
@@ -228,7 +234,7 @@ auto createJobs(DmdVersions,DubPackages)(DmdVersions dmds, DubPackages packages,
 	import std.algorithm : cartesianProduct;
 	return dmds.cartesianProduct(packages).map!((t){
 		auto sha = sha1Of(t[0].id ~ t[1]._id).toHexString().text;
-		return Job(sha,t[0],t[1],js.id,js.trigger,js.triggerId,getTimestamp());
+		return Job(sha,t[0],t[1],js.id,js.trigger,js.triggerId,getTimestamp(),getTimestamp());
 	});
 }
 struct JobSummary
@@ -236,18 +242,14 @@ struct JobSummary
 	@name("_id") string id;
 	DmdVersion dmd;
 	DubPackage pkg;
-}
-struct JobResultSummary
-{
-	JobSummary job;
 	Timestamp start;
 	Timestamp finish;
 	ErrorStats error;
 }
 struct JobComparison
 {
-	JobResultSummary left;
-	JobResultSummary right;	
+	JobSummary left;
+	JobSummary right;	
 }
 bool isPullRequest(JobSet js)
 {
@@ -293,24 +295,24 @@ bool doesPullRequestsExists(JobSet js)
 			throw new Exception("Invalid response");
 		exists = true;
 	});
-	return exists;	
+	return exists;
 }
-JobComparison[] compareJobResultSets(JobResultSummary[] setA, JobResultSummary[] setB)
+JobComparison[] compareJobSummaries(JobSummary[] setA, JobSummary[] setB)
 {
-	auto compareJobResultSummary(JobResultSummary a, JobResultSummary b)
+	auto compareJobSummary(JobSummary a, JobSummary b)
 	{
-		return cmp(a.job.pkg._id,b.job.pkg._id);
+		return cmp(a.pkg._id,b.pkg._id);
 	}
 
-	sort!((a,b)=>compareJobResultSummary(a,b)<0)(setA);
-	sort!((a,b)=>compareJobResultSummary(a,b)<0)(setB);
+	sort!((a,b)=>compareJobSummary(a,b)<0)(setA);
+	sort!((a,b)=>compareJobSummary(a,b)<0)(setB);
 
 	auto compsApp = appender!(JobComparison[]);
 	while(!setA.empty && !setB.empty)
 	{
 		auto left = setA.front();
 		auto right = setB.front();
-		auto c = compareJobResultSummary(left,right);
+		auto c = compareJobSummary(left,right);
 		if (c == 0)
 		{
 			if (left.error.type != right.error.type ||
@@ -325,32 +327,31 @@ JobComparison[] compareJobResultSets(JobResultSummary[] setA, JobResultSummary[]
 	}
 	return compsApp.data;
 }
-@("compareJobResultSets")
+@("compareJobSummaries")
 unittest
 {
 	auto dmd = DmdVersion("v2.061.1","2012-12-12T08:33:12Z");
 	auto pkgs = [DubPackage("abc","1.0.0"),DubPackage("def","1.0.0")];
-	auto jobSummaries = pkgs.map!(p=>JobSummary("",dmd,p)).array();
 	auto noError = ErrorStats(ErrorType.None);
 	auto linkerError = ErrorStats(ErrorType.LinkerError);
 	auto dmdError1 = ErrorStats(ErrorType.DmdNonZeroExit,1);
 	auto dmdError99 = ErrorStats(ErrorType.DmdNonZeroExit,99);
 
-	auto sum0noError = JobResultSummary(jobSummaries[0],getTimestamp,getTimestamp,noError);
-	auto sum1noError = JobResultSummary(jobSummaries[1],getTimestamp,getTimestamp,noError);
-	auto sum0linkerError = JobResultSummary(jobSummaries[0],getTimestamp,getTimestamp,linkerError);
-	auto sum0dmd1Error = JobResultSummary(jobSummaries[0],getTimestamp,getTimestamp,dmdError1);
-	auto sum0dmd99Error = JobResultSummary(jobSummaries[0],getTimestamp,getTimestamp,dmdError99);
+	auto sum0noError = JobSummary("",dmd,pkgs[0],getTimestamp,getTimestamp,noError);
+	auto sum1noError = JobSummary("",dmd,pkgs[1],getTimestamp,getTimestamp,noError);
+	auto sum0linkerError = JobSummary("",dmd,pkgs[0],getTimestamp,getTimestamp,linkerError);
+	auto sum0dmd1Error = JobSummary("",dmd,pkgs[0],getTimestamp,getTimestamp,dmdError1);
+	auto sum0dmd99Error = JobSummary("",dmd,pkgs[0],getTimestamp,getTimestamp,dmdError99);
 
 	import std.algorithm : equal;
-	assert(compareJobResultSets([sum0noError],[sum0noError]).empty);
-	assert(compareJobResultSets([sum0noError,sum1noError],[sum1noError]).empty);
-	assert(compareJobResultSets([sum0noError,sum1noError],[sum1noError,sum0linkerError]).equal(
+	assert(compareJobSummaries([sum0noError],[sum0noError]).empty);
+	assert(compareJobSummaries([sum0noError,sum1noError],[sum1noError]).empty);
+	assert(compareJobSummaries([sum0noError,sum1noError],[sum1noError,sum0linkerError]).equal(
 		[JobComparison(sum0noError,sum0linkerError)])
 	);
-	assert(compareJobResultSets([sum0linkerError,sum1noError],[sum1noError,sum0linkerError]).empty);
+	assert(compareJobSummaries([sum0linkerError,sum1noError],[sum1noError,sum0linkerError]).empty);
 
-	assert(compareJobResultSets([sum0dmd1Error],[sum0dmd99Error]).equal(
+	assert(compareJobSummaries([sum0dmd1Error],[sum0dmd99Error]).equal(
 		[JobComparison(sum0dmd1Error,sum0dmd99Error)])
 	);
 }
