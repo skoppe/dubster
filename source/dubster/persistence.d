@@ -246,6 +246,16 @@ void migrateToVersion1(Persistence db) {
 	db.dropOld!("results");
 }
 
+@Version(2)
+void migrateToVersion2(Persistence db) {
+	db.drop!("dmds");
+	db.dropOld!("executingJobs");
+	db.drop!("jobSets");
+	db.drop!("packages");
+	db.drop!("jobs");
+	db.dropOld!("results");
+}
+
 private template getMigratorVersion(alias T) {
 	import std.traits;
 	enum getMigratorVersion = getUDAs!(mixin(T),Version)[0].ver;
