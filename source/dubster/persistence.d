@@ -81,9 +81,11 @@ struct Config
 		Persistence db;
 		Version ver;
     void init()() {
+      logInfo("Locating system entry in db");
 		  auto col = db.find!("system",Version)(["id":"version"]);
       if (col.empty)
       {
+        logInfo("No system entry in db");
         import std.meta;
         template isMigrator(alias T) {
           enum isMigrator = hasUDA!(mixin(T),Version);
@@ -93,6 +95,7 @@ struct Config
           enum lastVersion = 0;
         else
           enum lastVersion = getMigratorVersion!(migrators[$-1]);
+        logInfo("Checking results table");
         if (db.emptyOld!("results"))
           ver = Version(lastVersion);
         else
@@ -102,10 +105,14 @@ struct Config
           string id;
           int ver;
         }
+        logInfo("Inserting version %s",ver);
         db.append!("system")(IndexedVersion("version",ver.ver));
       }
-      else
+      else {
+        logInfo("Found entry in db");
         ver = col.front();
+      }
+      logInfo("Version is %s",ver);
     }
 	}
 	this(Persistence db) {
