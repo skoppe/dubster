@@ -207,7 +207,7 @@ class Persistence : EventDispatcher
     return getCollection!(name).find().empty();
   }
   bool emptyOld(string name)() {
-    return db[name].count(Bson()) == 0;
+    return db[name].find().empty();
   }
 	void ensureIndex(string name, Fields)(Fields f) {
 		return getCollection!(name).ensureIndex(f);
