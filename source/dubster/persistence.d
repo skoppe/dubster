@@ -61,11 +61,11 @@ class EventDispatcher
 			unsubscribe(t);
 	}
 	private void dispatch(string name)(string type) {
-		if (name != "rawJobResults" && name != "system")
+		if (name != "rawJobResults" && name != "settings")
 			dispatch(EventMessage(name,type,Json()));
 	}
 	private void dispatch(string name, T)(string type, T t) {
-		if (name != "rawJobResults" && name != "system")
+		if (name != "rawJobResults" && name != "settings")
 			dispatch(EventMessage(name,type,t.serializeToJson()));
 	}
 }
@@ -81,11 +81,11 @@ struct Config
 		Persistence db;
 		Version ver;
     void init()() {
-      logInfo("Locating system entry in db");
-		  auto col = db.find!("system",Version)(["id":"version"]);
+      logInfo("Locating config entry in db");
+		  auto col = db.find!("settings",Version)(["id":"version"]);
       if (col.empty)
       {
-        logInfo("No system entry in db");
+        logInfo("No config entry in db");
         import std.meta;
         template isMigrator(alias T) {
           enum isMigrator = hasUDA!(mixin(T),Version);
@@ -106,7 +106,7 @@ struct Config
           int ver;
         }
         logInfo("Inserting version %s",ver);
-        db.append!("system")(IndexedVersion("version",ver.ver));
+        db.append!("settings")(IndexedVersion("version",ver.ver));
       }
       else {
         logInfo("Found entry in db");
@@ -122,7 +122,7 @@ struct Config
 		return ver;
 	}
 	auto updateVersion(int newVersion){
-		db.update!("system")(["id":"version"],["$set":["ver":Bson(newVersion)]]);
+		db.update!("settings")(["id":"version"],["$set":["ver":Bson(newVersion)]]);
 		ver.ver = newVersion;
 	}
 }
@@ -132,7 +132,7 @@ class Persistence : EventDispatcher
 	private {
 		MongoCollection jobs, dmds, packages, 
 			jobSets, packageStats, packageVersionStats, dmdReleaseStats, 
-			rawJobResults, system;
+			rawJobResults, settings;
 		Config _config;
     MongoDatabase db;
 	}
@@ -146,7 +146,7 @@ class Persistence : EventDispatcher
 		packageVersionStats = db["packageVersionStats"];
 		dmdReleaseStats = db["dmdReleaseStats"];
 		rawJobResults = db["rawJobResults"];
-		system = db["system"];
+		settings = db["settings"];
     logInfo("Loading Config from DB");
 		_config = Config(this);
     this.db = db;
