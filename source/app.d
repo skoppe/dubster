@@ -46,8 +46,9 @@ void main()
       new Worker(settings.createWorkerSettings);
     } else if (settings.server)
 		{
-      logInfo("Staring Persistence Layer");
+      logInfo("Starting Persistence Layer");
 			auto db = new Persistence(connectMongoDB(settings.mongoHost).getDatabase(settings.mongoDb));
+      logInfo("Starting Migration Layer");
 			auto migrator = db.migrator();
 
 			if (migrator.needsMigration)
