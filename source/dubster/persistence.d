@@ -96,7 +96,7 @@ struct Config
         else
           enum lastVersion = getMigratorVersion!(migrators[$-1]);
         logInfo("Checking results table");
-        if (db.emptyOld!("results"))
+        if (db.emptyOld!("results") && db.emptyOld!("jobSets") && db.emptyOld!("dmds"))
           ver = Version(lastVersion);
         else
           ver = Version(0);
@@ -116,6 +116,7 @@ struct Config
     }
 	}
 	this(Persistence db) {
+    this.db = db;
     init();
 	}
 	auto getVersion() {
@@ -148,8 +149,8 @@ class Persistence : EventDispatcher
 		rawJobResults = db["rawJobResults"];
 		settings = db["settings"];
     logInfo("Loading Config from DB");
-		_config = Config(this);
     this.db = db;
+		_config = Config(this);
 	}
 	private auto getCollection(string name)() {
 		static assert(
