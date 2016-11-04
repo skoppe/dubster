@@ -193,6 +193,15 @@ class Persistence : EventDispatcher
 		}
 		dispatch!(name)("update",Update(s,u));
 	}
+  void update(string name, Selector, Updates)(Selector s, Updates u, UpdateFlags flags) {
+    db[name].update(s,u,flags);
+		struct Update
+		{
+			Selector selector;
+			Updates updates;
+		}
+		dispatch!(name)("update",Update(s,u));
+  }
 	auto find(string name, T, Query)(Query q, int skip = 0, int limit = 0) {
 		return getCollection!(name).find!(T,Query)(q,null,QueryFlags.None).skip(skip).limit(limit);
 	}
@@ -270,6 +279,11 @@ void migrateToVersion2(Persistence db) {
 	db.drop!("packages");
 	db.drop!("jobs");
 	db.dropOld!("results");
+}
+
+@Version(3)
+void migrateToVersion3(Persistence db) {
+  db.update!("rawJobResults")(Bson(),["$rename": Bson(["created":Bson("creation")])],UpdateFlags.multiUpdate);
 }
 
 private template getMigratorVersion(alias T) {
