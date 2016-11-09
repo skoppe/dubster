@@ -283,7 +283,7 @@ void migrateToVersion2(Persistence db) {
 
 @Version(3)
 void migrateToVersion3(Persistence db) {
-  db.update!("rawJobResults")(Bson(),["$rename": Bson(["created":Bson("creation")])],UpdateFlags.multiUpdate);
+  db.update!("rawJobResults")(Bson.emptyObject,["$rename": Bson(["created":Bson("creation")])],UpdateFlags.multiUpdate);
 }
 
 private template getMigratorVersion(alias T) {

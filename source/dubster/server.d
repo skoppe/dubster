@@ -275,7 +275,7 @@ class Server : IDubsterApi
 
 		Json j = job.get.serializeToJson();
 		j["start"] = getTimestamp();
-    db.update!("jobs")(["_id":Bson(j["id"])],["$set":["status":Bson(JobStatus.Executing),"start":Bson(j["start"]),"modified":Bson(getTimestamp())]]);
+    db.update!("jobs")(["_id":Bson(j["_id"])],["$set":["status":Bson(JobStatus.Executing),"start":Bson(j["start"]),"modified":Bson(getTimestamp())]]);
 		js.pendingJobs -= 1;
 		js.executingJobs += 1;
 		if (js.start == Timestamp.init)
