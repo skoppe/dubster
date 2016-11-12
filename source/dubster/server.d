@@ -372,9 +372,9 @@ class Server : IDubsterApi
     if (query.status != JobStatus.All)
       constraints["status"] = query.status;
 		if (query.pkg.length > 0)
-			constraints["job.pkg.name"] = Bson(query.pkg);
+			constraints["pkg.name"] = Bson(query.pkg);
 		if (query.ver.length > 0)
-			constraints["job.pkg.ver"] = Bson(query.ver);
+			constraints["pkg.ver"] = Bson(query.ver);
 		if (query.types.length > 0)
 			constraints["trigger"] = Bson(["$in": Bson(query.types.map!(to!string).map!(a=>Bson(a)).array)]);
 		if (constraints.length == 0)
