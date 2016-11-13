@@ -93,7 +93,9 @@ interface IDubsterApi
 	@path("/results")
 	Job[] getJobResults(JobResultsQueryParams query);
 	@path("/results/:id")
-	string getJobOutput(string _id);
+	Job getJob(string _id);
+  @path("/results/:id/output")
+  Json getJobOutput(string _id);
 	@path("/pull/:component/:number")
 	void postPullRequest(string _component, string _number);
 	@path("/dmd")
@@ -381,12 +383,22 @@ class Server : IDubsterApi
 			return db.find!("jobs",Job)(query.skip,query.limit).sort(getSort(query)).array();
 		return db.find!("jobs",Job)(constraints,query.skip,query.limit).sort(getSort(query)).array();
 	}
-	string getJobOutput(string _id)
+	Job getJob(string _id)
+  {
+    auto cursor = db.find!("jobs",Job)(["_id":_id]);
+		if (cursor.empty)
+			throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found.")]));
+		return cursor.front;
+  }
+	Json getJobOutput(string _id)
 	{
 		auto cursor = db.find!("rawJobResults",RawJobResult)(["_id": _id]);
 		if (cursor.empty)
 			throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found.")]));
-		return cursor.front().output;
+    struct Output {
+      string output;
+    }
+		return Output(cursor.front().output).serializeToJson();
 	}
 	void postPullRequest(string _component, string _number)
 	{
