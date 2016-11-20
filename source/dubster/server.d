@@ -470,7 +470,7 @@ class Server : IDubsterApi
 		{
 			auto cursor = db.find!("dmdReleaseStats",DmdReleaseStats)(["dmd.ver": Bson(id)]);
 			if (cursor.empty)
-				throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found JobSet "~_to)]));
+				throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found release "~_to)]));
 			return cursor.front();
 		}
 		auto toJobSet = getRelease(_to);

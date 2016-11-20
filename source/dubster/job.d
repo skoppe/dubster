@@ -244,7 +244,7 @@ struct JobSummary
 	DubPackage pkg;
 	Timestamp start;
 	Timestamp finish;
-	ErrorStats error;
+	ErrorStats result;
 }
 struct JobComparison
 {
