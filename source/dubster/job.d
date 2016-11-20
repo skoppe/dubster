@@ -258,7 +258,7 @@ bool isPullRequest(JobSet js)
 		case JobTrigger.DmdRelease:
 		case JobTrigger.PackageUpdate:
 		case JobTrigger.Manual:
-		case JobTrigger.Nightly:
+  case JobTrigger.Nightly:
 			return false;
 		case JobTrigger.DmdPullRequest:
 		case JobTrigger.DruntimePullRequest:

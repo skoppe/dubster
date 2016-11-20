@@ -77,6 +77,12 @@ struct JobResultsQueryParams
 	@optional int limit = 24;
   @optional JobStatus status = JobStatus.All;
 }
+struct ReleaseComparison
+{
+  DmdReleaseStats right;
+  DmdReleaseStats left;
+  JobComparison[] items;
+}
 struct JobSetComparison
 {
 	JobSet to;
@@ -116,8 +122,12 @@ interface IDubsterApi
 	PackageVersionStats[] getVersionedPackages(string _package, int skip = 0, int limit = 24);
 	@path("/releases")
 	DmdReleaseStats[] getReleases(ReleaseQueryParams query);
-	@path("/releases/:release")
+  @path("/releases/:release")
+  DmdReleaseStats getRelease(string _release);
+	@path("/releases/:release/packages")
 	Job[] getReleasePackages(ReleaseQueryParams query, string _release);
+  @path("/releases/:release/compare/:to")
+  ReleaseComparison getReleaseComparison(string _release, string _to);
 }
 struct ServerSettings
 {
@@ -446,6 +456,30 @@ class Server : IDubsterApi
 	{
 		return db.find!("jobs",Job)(["jobSet":Bson(_id),"status":Bson(JobStatus.Completed)],skip,limit).sort(["start":-1]).array();
 	}
+  ReleaseComparison getReleaseComparison(string _release, string _to) {
+    // todo a better approach might be to have mongo retrieve the packages is pkg._id order, so we don't have to sort
+    // and can lazily pull
+		auto getJobs(string id)
+		{
+			auto cursor = db.find!("jobs",JobSummary)(["dmd.ver": Bson(id),"status":Bson(JobStatus.Completed)]);
+			auto app = appender!(JobSummary[]);
+			cursor.copy(app);
+			return app.data;
+		}
+		auto getRelease(string id)
+		{
+			auto cursor = db.find!("dmdReleaseStats",DmdReleaseStats)(["dmd.ver": Bson(id)]);
+			if (cursor.empty)
+				throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found JobSet "~_to)]));
+			return cursor.front();
+		}
+		auto toJobSet = getRelease(_to);
+		auto fromJobSet = getRelease(_release);
+
+		auto toJobs = getJobs(_to);
+		auto fromJobs = getJobs(_release);
+		return ReleaseComparison(toJobSet,fromJobSet,compareJobSummaries(fromJobs,toJobs));
+  }
 	JobSetComparison getComparison(string _from, string _to)
 	{
 		auto readData(string id)
@@ -460,7 +494,7 @@ class Server : IDubsterApi
 			auto cursor = db.find!("jobSets",JobSet)(["_id":id]);
 			if (cursor.empty)
 				throw new RestException(404, Json(["code":Json(1007),"msg":Json("Not Found JobSet "~_to)]));
-			return cursor.front();			
+			return cursor.front();
 		}
 		auto toJobSet = getJobSet(_to);
 		auto fromJobSet = getJobSet(_from);
@@ -498,14 +532,20 @@ class Server : IDubsterApi
 			return db.find!("dmdReleaseStats",DmdReleaseStats)(query.skip,query.limit).sort(["dmd.datetime":-1]).array();
 		return db.find!("dmdReleaseStats",DmdReleaseStats)(constraints,query.skip,query.limit).sort(["dmd.datetime":-1]).array();
 	}
+  DmdReleaseStats getRelease(string _release) {
+		auto cursor = db.find!("dmdReleaseStats",DmdReleaseStats)(["dmd.ver":["$regex":Bson(_release)]]);
+		if (cursor.empty)
+			throw new RestException(404, Json(["code":Json(1007),"msg":Json("Could not find release")]));
+		return cursor.front();
+  }
 	Job[] getReleasePackages(ReleaseQueryParams query, string _release)
 	{
 		Bson[string] constraints = ["dmd.ver":Bson(_release),"status":Bson(JobStatus.Completed)];
 		if (query.query.length > 0)
 			constraints["pkg.name"] = ["$regex":Bson(query.query)];
 		if (constraints.length == 0)
-			return db.find!("jobs",Job)(query.skip,query.limit).array();
-		return db.find!("jobs",Job)(constraints,query.skip,query.limit).array();
+			return db.find!("jobs",Job)(query.skip,query.limit).sort(["creation":1]).array();
+		return db.find!("jobs",Job)(constraints,query.skip,query.limit).sort(["creation":1]).array();
   }
 	private void restore()
 	{
