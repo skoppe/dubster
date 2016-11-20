@@ -315,8 +315,8 @@ JobComparison[] compareJobSummaries(JobSummary[] setA, JobSummary[] setB)
 		auto c = compareJobSummary(left,right);
 		if (c == 0)
 		{
-			if (left.error.type != right.error.type ||
-				left.error.exitCode != right.error.exitCode)
+			if (left.result.type != right.result.type ||
+				left.result.exitCode != right.result.exitCode)
 				compsApp.put(JobComparison(left,right));
 			setA.popFront();
 			setB.popFront();
