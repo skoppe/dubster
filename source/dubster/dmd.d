@@ -243,7 +243,7 @@ unittest
 auto fetchDmdVersions(BitbucketTag[] delegate (int) fetchPage = toDelegate(&getDmdDiggerTags), Version oldest = Version(2,68,2))
 {
 	import std.array : appender;
-	import std.algorithm : countUntil, map, chunkBy, joiner, find, copy;
+	import std.algorithm : countUntil, map, chunkBy, joiner, find, copy, until;
 	import std.range : front, take, drop;
 	import std.typecons : tuple;
 	auto app = appender!(BitbucketTag[]);
@@ -251,8 +251,8 @@ auto fetchDmdVersions(BitbucketTag[] delegate (int) fetchPage = toDelegate(&getD
 	ptrdiff_t idx;
 	do {
 		auto tags = fetchPage(page++);
-		idx = tags.map!(t=>parseVersion(t.name)).filter!(v=>v.major >= 2).countUntil!(v=>v<oldest);
-		tags.take(idx).copy(app);
+    auto tagsVersions = tags.map!(t=>tuple!("tag","ver")(t,parseVersion(t.name)));
+		tagsVersions.filter!(t=>t.ver.major >= 2).until!(t=>t.ver<oldest).map!(t=>t.tag).copy(app);
 	} while (idx == -1);
 
 	auto output = appender!(DmdVersion[]);
