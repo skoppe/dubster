@@ -252,7 +252,9 @@ auto fetchDmdVersions(BitbucketTag[] delegate (int) fetchPage = toDelegate(&getD
 	do {
 		auto tags = fetchPage(page++);
     auto tagsVersions = tags.map!(t=>tuple!("tag","ver")(t,parseVersion(t.name)));
-		tagsVersions.filter!(t=>t.ver.major >= 2).until!(t=>t.ver<oldest).map!(t=>t.tag).copy(app);
+		auto filtered = tagsVersions.filter!(t=>t.ver.major >= 2);
+    idx = filtered.countUntil!(t=>t.ver<oldest);
+    filtered.take(idx).map!(t=>t.tag).copy(app);
 	} while (idx == -1);
 
 	auto output = appender!(DmdVersion[]);
