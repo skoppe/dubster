@@ -192,14 +192,10 @@ class BadgeService
 	{
 		this.db = db;
 	}
-	@path("/badge/:package/version/:version/:dmd")
-	void getBadge(string _package, string _version, string _dmd, HTTPServerResponse res)
-	{
-		string id = _package ~ ":" ~ _version;
-		auto stats = db.find!("jobs",Job)(["pkg._id":id,"dmd.ver":_dmd]);
-		if (stats.empty)
+  private void returnFirst(Collection)(Collection col, HTTPServerResponse res) {
+		if (col.empty)
 			throw new HTTPStatusException(404);
-		auto job = stats.front();
+		auto job = col.front();
 		string text, color;
 		auto statusCode = 301; // permanent redirect
 		if (job.result.isSuccess())
@@ -221,7 +217,25 @@ class BadgeService
 			import std.array : replace;
 			return urlEncode(input).replace("-","--");
 		}
-		res.redirect("https://img.shields.io/badge/"~encode(_dmd)~"-"~encode(text)~"-"~encode(color)~".svg",statusCode);
+		res.redirect("https://img.shields.io/badge/"~encode(job.dmd.ver)~"-"~encode(text)~"-"~encode(color)~".svg",statusCode);
+  }
+  @path("/badge/:package")
+  void getBadgeForPackage(string _package, HTTPServerResponse res) {
+		auto stats = db.find!("jobs",Job)(["pkg.name":Bson(_package),"status":Bson(JobStatus.Completed)]).sort(["pkg.datetime":-1,"dmd.datetime":-1]);
+    this.returnFirst(stats,res);
+  }
+  @path("/badge/:package/version/:version")
+  void getBadgeForVersionedPackage(string _package, string _version, HTTPServerResponse res) {
+		string id = _package ~ ":" ~ _version;
+		auto stats = db.find!("jobs",Job)(["pkg._id":Bson(id),"status":Bson(JobStatus.Completed)]).sort(["pkg.datetime":-1,"dmd.datetime":-1]);
+    this.returnFirst(stats,res);
+  }
+	@path("/badge/:package/version/:version/:dmd")
+	void getBadgeForVersionedPackageForDmd(string _package, string _version, string _dmd, HTTPServerResponse res)
+	{
+		string id = _package ~ ":" ~ _version;
+		auto stats = db.find!("jobs",Job)(["pkg._id":Bson(id),"dmd.ver":Bson(_dmd),"status":Bson(JobStatus.Completed)]);
+    this.returnFirst(stats,res);
 	}
 }
 class Server : IDubsterApi
