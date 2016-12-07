@@ -272,10 +272,17 @@ auto fetchDmdVersions(BitbucketTag[] delegate (int) fetchPage = toDelegate(&getD
 	return output.data;
 }
 unittest {
+  auto versions = fetchDmdVersions();
+  assert(versions.length > 5);
+  foreach(v; versions)
+    assert(v.ver.parseVersion >= Version(2,68,2));
+}
+unittest {
 	import std.datetime : Clock, UTC;
 	auto time = Clock.currTime(UTC()).toISOExtString();
 	auto target = BitbucketTagTarget("asdf",time);
 	auto data = [
+    [BitbucketTag("v1.078.1",target)],
 		[BitbucketTag("v2.071.1-b4",target),BitbucketTag("v2.071.1-b3",target)],
 		[BitbucketTag("v2.071.1-b2",target),BitbucketTag("v2.071.0",target)],
 		[BitbucketTag("v2.070.1",target),BitbucketTag("v2.070.0",target)],
